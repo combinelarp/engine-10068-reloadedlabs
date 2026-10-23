@@ -4,3 +4,7 @@
 **/build/
 **/buildOutputCleanup/
 **/buildOutputCleanup
+**/ApkBuild/libs/
+**/ApkBuild/obj/
+**/Bin
+**/.vs/

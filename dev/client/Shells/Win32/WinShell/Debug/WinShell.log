@@ -1,0 +1,16 @@
+﻿  stdafx.cpp
+  ConsoleUtility.cpp
+  Test.cpp
+  WinShell.cpp
+  ShellInterfaceWin32.cpp
+D:\Download\tupoi10068\engine-10068\dev\client\Shells\Win32\WinShell\ConsoleUtility.cpp(16,9): warning C4996: 'freopen': This function or variable may be unsafe. Consider using freopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (kompilowanie pliku źródłowego „/ConsoleUtility.cpp”)
+  
+D:\Download\tupoi10068\engine-10068\dev\client\Shells\Win32\WinShell\ConsoleUtility.cpp(17,9): warning C4996: 'freopen': This function or variable may be unsafe. Consider using freopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (kompilowanie pliku źródłowego „/ConsoleUtility.cpp”)
+  
+  MciPlayer.cpp
+  SimpleAudioEngine.cpp
+  Win32SoundEngine.cpp
+LINK : warning LNK4075: zignorowano opcję „/INCREMENTAL” z powodu określenia opcji „/PROFILE”
+LINK : fatal error LNK1181: nie można otworzyć pliku wejściowego „fmod_vc.lib”
