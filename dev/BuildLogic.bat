@@ -1,4 +1,6 @@
 @echo off
+setlocal
+set "MSBUILD=C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe"
 set "PROJ=%~dp0logic\Build\Src\Logic.vcxproj"
 
 echo Building Logic Debug Win32 ...
