@@ -1,4 +1,5 @@
 #include "S2CCommonDataPacketHandles.h"
+#include "Network/S2CPacketDispatch.h"
 #include "Network/CommonDataDispatch.h"
 #include "GUI/RootGuiLayout.h"
 #include "cWorld/Blockman.h"
@@ -727,4 +728,14 @@ void S2CCommonDataPacketHandles::onGetSkyWarLuckyBlockData(ui64 userId, String& 
 		RootGuiLayout::Instance()->onDispatchCommonData(RootGuiLayout::LayoutId::KILL_PANEL, key, data);
 		return;
 	}
+}
+
+void registerS2CCommonDataPacketHandles(S2CPacketDispatch& dispatch)
+{
+	dispatch.registerClass<S2CCommonDataPacketHandles>();
+}
+
+void initClientCommonDataHelper()
+{
+	ClientCommonDataHelper().init();
 }

@@ -1,32 +1,31 @@
 #include "ClientNetworkRecver.h"
 #include "Network/S2CPacketDispatch.h"
 
-#include "Network/S2CPacketHandles/S2CChatPacketHandles.h"
-#include "Network/S2CPacketHandles/S2CGamePacketHandles.h"
-#include "Network/S2CPacketHandles/S2CRanchPacketHandles.h"
-#include "Network/S2CPacketHandles/S2CBirdSimulatorPacketHandles.h"
-#include "Network/S2CPacketHandles/S2CBlockCityPacketHandles.h"
-#include "Network/S2CPacketHandles/S2CEntityPacketHandles.h"
-#include "Network/S2CPacketHandles/S2CPlayerActionPacketHandles.h"
-#include "Network/S2CPacketHandles/S2CCommonDataPacketHandles.h"
-#include "Network/S2CPacketHandles/S2CBlockFortPacketHandles.h"
-#include "Network/S2CPacketHandles/S2CInitPacketHandles.h"
-#include "Network/S2CPacketHandles/S2CStatusPacketHandles.h"
+void registerS2CChatPacketHandles(S2CPacketDispatch& dispatch);
+void registerS2CGamePacketHandles(S2CPacketDispatch& dispatch);
+void registerS2CRanchPacketHandles(S2CPacketDispatch& dispatch);
+void registerS2CBirdSimulatorPacketHandles(S2CPacketDispatch& dispatch);
+void registerS2CBlockCityPacketHandles(S2CPacketDispatch& dispatch);
+void registerS2CEntityPacketHandles(S2CPacketDispatch& dispatch);
+void registerS2CPlayerActionPacketHandles(S2CPacketDispatch& dispatch);
+void registerS2CCommonDataPacketHandles(S2CPacketDispatch& dispatch);
+void registerS2CBlockFortPacketHandles(S2CPacketDispatch& dispatch);
+void registerS2CInitPacketHandles(S2CPacketDispatch& dispatch);
+void registerS2CStatusPacketHandles(S2CPacketDispatch& dispatch);
+void initClientCommonDataHelper();
 
 void ClientNetworkRecver::initInner()
 {
-	m_packetDispatch->registerClass<S2CChatPacketHandles>();
-	m_packetDispatch->registerClass<S2CGamePacketHandles>();
-	m_packetDispatch->registerClass<S2CRanchPacketHandles>();
-	m_packetDispatch->registerClass<S2CBirdSimulatorPacketHandles>();
-	m_packetDispatch->registerClass<S2CBlockCityPacketHandles>();
-	m_packetDispatch->registerClass<S2CEntityPacketHandles>();
-	m_packetDispatch->registerClass<S2CPlayerActionPacketHandles>();
-	m_packetDispatch->registerClass<S2CCommonDataPacketHandles>();
-	m_packetDispatch->registerClass<S2CBlockFortPacketHandles>();
-	m_packetDispatch->registerClass<S2CInitPacketHandles>();
-	m_packetDispatch->registerClass<S2CStatusPacketHandles>();
-	ClientCommonDataHelper().init();
+	registerS2CChatPacketHandles(*m_packetDispatch);
+	registerS2CGamePacketHandles(*m_packetDispatch);
+	registerS2CRanchPacketHandles(*m_packetDispatch);
+	registerS2CBirdSimulatorPacketHandles(*m_packetDispatch);
+	registerS2CBlockCityPacketHandles(*m_packetDispatch);
+	registerS2CEntityPacketHandles(*m_packetDispatch);
+	registerS2CPlayerActionPacketHandles(*m_packetDispatch);
+	registerS2CCommonDataPacketHandles(*m_packetDispatch);
+	registerS2CBlockFortPacketHandles(*m_packetDispatch);
+	registerS2CInitPacketHandles(*m_packetDispatch);
+	registerS2CStatusPacketHandles(*m_packetDispatch);
+	initClientCommonDataHelper();
 }
-
-

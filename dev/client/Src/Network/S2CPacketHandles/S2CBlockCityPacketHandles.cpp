@@ -1,4 +1,5 @@
 #include "S2CBlockCityPacketHandles.h"
+#include "Network/S2CPacketDispatch.h"
 #include "cEntity/EntityPlayerSPMP.h"
 #include "cWorld/Blockman.h"
 #include "Util/ClientEvents.h"
@@ -127,4 +128,9 @@ void S2CBlockCityPacketHandles::handlePacket(std::shared_ptr<S2CPacketSyncBlockC
 		player->m_blockCity->setArchive(&packet->archive);
 		UpdateBlockCityArchiveEvent::emit();
 	}
+}
+
+void registerS2CBlockCityPacketHandles(S2CPacketDispatch& dispatch)
+{
+	dispatch.registerClass<S2CBlockCityPacketHandles>();
 }

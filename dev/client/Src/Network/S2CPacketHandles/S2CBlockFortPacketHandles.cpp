@@ -1,4 +1,5 @@
 #include "S2CBlockFortPacketHandles.h"
+#include "Network/S2CPacketDispatch.h"
 #include "cEntity/EntityPlayerSPMP.h"
 #include "cWorld/Blockman.h"
 #include "Util/ClientEvents.h"
@@ -73,4 +74,9 @@ void S2CBlockFortPacketHandles::handlePacket(std::shared_ptr<S2CPacketShowFloatT
 	{
 		ShowFloatTipEvent::emit(LanguageManager::Instance()->getString(packet->msg).c_str());
 	}
+}
+
+void registerS2CBlockFortPacketHandles(S2CPacketDispatch& dispatch)
+{
+	dispatch.registerClass<S2CBlockFortPacketHandles>();
 }

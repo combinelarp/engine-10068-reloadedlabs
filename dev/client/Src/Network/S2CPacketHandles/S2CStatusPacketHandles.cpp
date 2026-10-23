@@ -1,4 +1,5 @@
 #include "S2CStatusPacketHandles.h"
+#include "Network/S2CPacketDispatch.h"
 #include "cEntity/EntityPlayerSPMP.h"
 #include "cEntity/EntityOtherPlayerMP.h"
 #include "cWorld/Blockman.h"
@@ -315,5 +316,10 @@ void S2CStatusPacketHandles::handlePacket(std::shared_ptr<S2CPacketSyncPlayerSet
 void S2CStatusPacketHandles::handlePacket(std::shared_ptr<S2CPacketSyncClientPeerProp>& packet)
 {
 	SyncClientPeerPropEvent::emit(packet->propertyList);
+}
+
+void registerS2CStatusPacketHandles(S2CPacketDispatch& dispatch)
+{
+	dispatch.registerClass<S2CStatusPacketHandles>();
 }
 

@@ -1,4 +1,5 @@
 #include "S2CInitPacketHandles.h"
+#include "Network/S2CPacketDispatch.h"
 #include "Network/ClientNetwork.h"
 
 #include "cEntity/EntityPlayerSPMP.h"
@@ -222,4 +223,9 @@ void S2CInitPacketHandles::handlePacket(std::shared_ptr<S2CPacketSceneSettingInf
 	{
 		BLOCKMAN::Blockman::Instance()->m_globalRender->applySceneSwitchChanges();
 	}
+}
+
+void registerS2CInitPacketHandles(S2CPacketDispatch& dispatch)
+{
+	dispatch.registerClass<S2CInitPacketHandles>();
 }

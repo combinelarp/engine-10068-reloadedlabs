@@ -1,4 +1,5 @@
 #include "S2CEntityPacketHandles.h"
+#include "Network/S2CPacketDispatch.h"
 #include "cEntity/EntityPlayerSPMP.h"
 #include "cEntity/EntityOtherPlayerMP.h"
 #include "cWorld/Blockman.h"
@@ -1527,4 +1528,9 @@ void S2CEntityPacketHandles::handlePacket(std::shared_ptr<S2CPacketSpawnEntityIt
 	auto dataCache = ClientNetwork::Instance()->getDataCache();
 	dataCache->addClientServerIdPair(entityItem->entityId, packet->entityId);
 	world->spawnEntityInWorld(entityItem);
+}
+
+void registerS2CEntityPacketHandles(S2CPacketDispatch& dispatch)
+{
+	dispatch.registerClass<S2CEntityPacketHandles>();
 }

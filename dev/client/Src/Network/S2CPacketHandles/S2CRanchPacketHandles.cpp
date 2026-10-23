@@ -1,4 +1,5 @@
 #include "S2CRanchPacketHandles.h"
+#include "Network/S2CPacketDispatch.h"
 #include "cEntity/EntityPlayerSPMP.h"
 #include "cWorld/Blockman.h"
 #include "World/World.h"
@@ -155,6 +156,11 @@ void S2CRanchPacketHandles::handlePacket(std::shared_ptr<S2CPacketSyncRanchShort
 		}
 		player->m_ranch->setShortcutFreeTimes(items);
 	}
+}
+
+void registerS2CRanchPacketHandles(S2CPacketDispatch& dispatch)
+{
+	dispatch.registerClass<S2CRanchPacketHandles>();
 }
 
 

@@ -1,4 +1,5 @@
 #include "S2CPlayerActionPacketHandles.h"
+#include "Network/S2CPacketDispatch.h"
 
 #include "cEntity/EntityPlayerSPMP.h"
 #include "cEntity/EntityOtherPlayerMP.h"
@@ -3030,5 +3031,10 @@ void S2CPlayerActionPacketHandles::handlePacket(std::shared_ptr<S2CPacketOpenCra
 void S2CPlayerActionPacketHandles::handlePacket(std::shared_ptr<S2CPacketUserRelation>& packet)
 {
 	UpdateUserRelationEvent::emit(packet->friends);
+}
+
+void registerS2CPlayerActionPacketHandles(S2CPacketDispatch& dispatch)
+{
+	dispatch.registerClass<S2CPlayerActionPacketHandles>();
 }
 

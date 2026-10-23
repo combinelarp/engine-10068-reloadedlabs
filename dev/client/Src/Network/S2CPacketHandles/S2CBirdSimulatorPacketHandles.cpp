@@ -1,4 +1,5 @@
 #include "S2CBirdSimulatorPacketHandles.h"
+#include "Network/S2CPacketDispatch.h"
 #include "cEntity/EntityPlayerSPMP.h"
 #include "Game/BirdSimulator.h"
 #include "cWorld/Blockman.h"
@@ -210,4 +211,9 @@ void S2CBirdSimulatorPacketHandles::handlePacket(std::shared_ptr<S2CPacketShowBi
 void S2CBirdSimulatorPacketHandles::handlePacket(std::shared_ptr<S2CPacketBirdShowWingTip>& packet)
 {
 	ShowBirdWingTipEvent::emit(packet->page);
+}
+
+void registerS2CBirdSimulatorPacketHandles(S2CPacketDispatch& dispatch)
+{
+	dispatch.registerClass<S2CBirdSimulatorPacketHandles>();
 }

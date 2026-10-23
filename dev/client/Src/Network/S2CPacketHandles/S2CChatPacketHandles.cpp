@@ -1,4 +1,5 @@
 #include "S2CChatPacketHandles.h"
+#include "Network/S2CPacketDispatch.h"
 #include "Network/ClientNetwork.h"
 #include "Entity/Entity.h"
 #include "cEntity/EntityPlayerSPMP.h"
@@ -161,4 +162,9 @@ void S2CChatPacketHandles::handlePacket(std::shared_ptr<S2CPacketKillMsg>& packe
 void S2CChatPacketHandles::handlePacket(std::shared_ptr<S2CPacketDefaultNotification>& packet)
 {
 	ReceiveNotificationEvent::emit(0, packet->content);
+}
+
+void registerS2CChatPacketHandles(S2CPacketDispatch& dispatch)
+{
+	dispatch.registerClass<S2CChatPacketHandles>();
 }

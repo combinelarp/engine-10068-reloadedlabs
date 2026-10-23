@@ -1,4 +1,5 @@
 #include "S2CGamePacketHandles.h"
+#include "Network/S2CPacketDispatch.h"
 #include "Util/ClientEvents.h"
 #include "Setting/LogicSetting.h"
 
@@ -22,4 +23,9 @@ void S2CGamePacketHandles::handlePacket(std::shared_ptr<S2CPacketEnableAutoShoot
 void S2CGamePacketHandles::handlePacket(std::shared_ptr<S2CPacketSyncGameWeather>& packet)
 {
 	LogicSetting::Instance()->setGameWeather(packet->weatherType);
+}
+
+void registerS2CGamePacketHandles(S2CPacketDispatch& dispatch)
+{
+	dispatch.registerClass<S2CGamePacketHandles>();
 }
