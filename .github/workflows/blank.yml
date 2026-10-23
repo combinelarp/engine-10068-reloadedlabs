@@ -22,15 +22,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # Explicit packages override setup-android's broken default ("tools")
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Install SDK packages
-        shell: pwsh
-        run: |
-          $manager = Join-Path $env:ANDROID_HOME "cmdline-tools\latest\bin\sdkmanager.bat"
-          & $manager --install "platform-tools" "platforms;android-27" "build-tools;27.0.3"
-          if ($LASTEXITCODE -ne 0) { throw "sdkmanager failed" }
+        with:
+          packages: platform-tools platforms;android-27 build-tools;27.0.3
 
       - name: Install Android NDK r15c
         shell: pwsh
