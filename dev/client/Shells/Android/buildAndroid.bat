@@ -145,7 +145,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-call ndk-build NDK_DEBUG=%BUILD_TYP% APP_ABI=%APP_APP_ABI% -j6
+call ndk-build NDK_DEBUG=%BUILD_TYP% APP_ABI=%APP_APP_ABI% -j12
 set "BUILD_RESULT=%ERRORLEVEL%"
 popd
 
