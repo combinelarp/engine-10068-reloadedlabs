@@ -34,6 +34,7 @@ $(warning  $(INCLUDE_DIR))
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libGameClient
+LOCAL_SHORT_COMMANDS := true
 
 LOCAL_CXXFLAGS := -DHAVE_PTHREAD
 

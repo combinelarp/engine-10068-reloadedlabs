@@ -21,6 +21,7 @@ endef
 #----------------------------------------------------------------------------------------
 include $(CLEAR_VARS)
 LOCAL_MODULE := raknet
+LOCAL_SHORT_COMMANDS := true
 
 TARGET_OUT := $(LOCAL_PATH)/../../Android/raknet/lib/$(APP_OPTIM)/$(TARGET_ARCH_ABI)
 

@@ -22,6 +22,7 @@ endef
 #lib: libLordClient
 include $(CLEAR_VARS)
 LOCAL_MODULE := Logic
+LOCAL_SHORT_COMMANDS := true
 LOCAL_CXXFLAGS := -DHAVE_PTHREAD
 TARGET_OUT := $(LOCAL_PATH)/../../Bin/$(APP_OPTIM)/$(TARGET_ARCH_ABI)
 LOCAL_CFLAGS += -fvisibility=hidden -Os
