@@ -56,6 +56,7 @@ exit /b 1
 set "ROOT_DIR=%PROJECT_DIR%\..\..\..\..\.."
 for %%I in ("%ROOT_DIR%") do set "ROOT_DIR=%%~fI"
 
+set "LIBRARIES_DIR=%ROOT_DIR%\engine-core\dev\libraries"
 set "ENGINE_DIR=%ROOT_DIR%\engine-core\dev\engine"
 set "LOGIC_DIR=%ROOT_DIR%\dev\logic"
 set "CLIENT_DIR=%ROOT_DIR%\dev\client"
@@ -69,6 +70,11 @@ echo.
 
 if not exist "%PROJECT_DIR%\app\." (
     echo Error: Missing Android app directory: "%PROJECT_DIR%\app"
+    goto build_failed
+)
+
+if not exist "%LIBRARIES_DIR%\ApkBuild\." (
+    echo Error: Libraries build directory not found: "%LIBRARIES_DIR%\ApkBuild"
     goto build_failed
 )
 
@@ -102,6 +108,9 @@ if errorlevel 1 (
     echo Error: ndk-build not found in PATH.
     goto build_failed
 )
+
+call :build "%LIBRARIES_DIR%\ApkBuild" "Raknet FreeType FreeImage Zlib Lua Zip Zippp Cpr G3log"
+if errorlevel 1 goto build_failed
 
 call :build "%ENGINE_DIR%\NDKBuild" "LordCore LordGLES2Render zlib"
 if errorlevel 1 goto build_failed

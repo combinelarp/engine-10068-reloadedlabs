@@ -172,5 +172,6 @@ LOCAL_SHARED_LIBRARIES := libfmod
 LOCAL_SHARED_LIBRARIES += libtersafe2
 
 LOCAL_LDFLAGS := -Wl,--hash-style=both
+LOCAL_SHORT_COMMANDS := true
 
 include $(BUILD_SHARED_LIBRARY)
