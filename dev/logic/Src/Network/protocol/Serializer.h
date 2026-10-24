@@ -258,7 +258,7 @@ template<typename T>
 inline
 typename std::enable_if<std::is_integral<T>::value && !std::is_unsigned<T>::value, void>::type Serializer::innerWrite(const T& t, RakNet::BitStream* stream)
 {
-	auto temp = static_cast<std::make_unsigned_t<T>>((t << 1) ^ (t >> (sizeof(T) * 8 - 1)));
+	auto temp = static_cast<typename std::make_unsigned<T>::type>((t << 1) ^ (t >> (sizeof(T) * 8 - 1)));
 	innerWrite(temp, stream);
 }
 
@@ -266,9 +266,8 @@ template<typename T>
 inline
 typename std::enable_if<std::is_integral<T>::value && !std::is_unsigned<T>::value, void>::type Serializer::innerRead(T& t, RakNet::BitStream* stream)
 {
-	std::make_unsigned_t<T> temp;
+	typename std::make_unsigned<T>::type temp;
 	innerRead(temp, stream);
-	t = static_cast<T>(temp);
 	t = static_cast<T>(temp >> 1) ^ (-(t & 1));
 }
 
