@@ -3,7 +3,7 @@ APP_ABI := armeabi-v7a
 #armeabi armeabi-v7a x86
 #APP_ABI := arm64-v8a armeabi-v7a
 APP_PLATFORM := android-15
-APP_STL := c++_shared
+APP_STL := gnustl_static
 #APP_CFLAG := -g -ggdb -O0 -gstabs+
 APP_CPPFLAGS := -fexceptions -frtti -std=c++11 -D__ANDROID__
 APP_CPPFLAGS += -Wno-logical-op-parentheses -Wno-bitwise-op-parentheses -Wno-deprecated-register -Wno-shift-count-overflow -Wno-string-plus-int -Wno-tautological-compare -Wno-return-type -Wno-switch -Wno-null-conversion -Wno-delete-non-virtual-dtor -Wno-self-assign-field -Wno-empty-body -Wno-pointer-bool-conversion -Wno-unused-value -Wno-inconsistent-missing-override -Wno-constant-conversion -Wno-writable-strings -Wno-parentheses -Wno-format-security
