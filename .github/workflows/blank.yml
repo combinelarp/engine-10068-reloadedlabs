@@ -28,13 +28,13 @@ jobs:
         with:
           packages: platform-tools platforms;android-27 build-tools;27.0.3
 
-      - name: Install Android NDK r15c
+      - name: Install Android NDK r16b
         shell: pwsh
         run: |
-          $zip = Join-Path $env:RUNNER_TEMP "ndk-r15c.zip"
-          Invoke-WebRequest -Uri "https://dl.google.com/android/repository/android-ndk-r15c-windows-x86_64.zip" -OutFile $zip
+          $zip = Join-Path $env:RUNNER_TEMP "ndk-r16b.zip"
+          Invoke-WebRequest -Uri "https://dl.google.com/android/repository/android-ndk-r16b-windows-x86_64.zip" -OutFile $zip
           7z x $zip "-o$env:RUNNER_TEMP" -y | Out-Null
-          $ndk = Join-Path $env:RUNNER_TEMP "android-ndk-r15c"
+          $ndk = Join-Path $env:RUNNER_TEMP "android-ndk-r16b"
 
           if (-not (Test-Path (Join-Path $ndk "ndk-build.cmd"))) {
             throw "NDK r15c was not installed."
