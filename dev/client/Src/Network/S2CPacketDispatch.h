@@ -38,55 +38,32 @@ public:
 
 	template<typename T>
 	void registerClass() {
-		registerClassHelp< T, S2CPacketType::ProtocolEnd, false>();
+		registerClassHelp<T, (int)S2CPacketType::ProtocolBegin, (int)S2CPacketType::ProtocolEnd>();
 	}
 
 private:
 
+	template<typename T, int Begin, int End>
+	typename std::enable_if<(Begin < End), void>::type registerClassHelp() {
+		const int Mid = Begin + (End - Begin) / 2;
+		registerClassHelp<T, Begin, Mid>();
+		registerClassHelp<T, Mid + 1, End>();
+	}
+
+	template<typename T, int Begin, int End>
+	typename std::enable_if<(Begin == End), void>::type registerClassHelp() {
+		registerClassMember<T, (S2CPacketType)Begin, HasS2CPacketHandle<T, (S2CPacketType)Begin>::value>();
+	}
+
 	template<typename T, S2CPacketType type, bool has>
-	typename std::enable_if<type != S2CPacketType::ProtocolBegin, void>::type registerClassHelp();
-
-	template<typename T, S2CPacketType type, bool has, 
-		typename = typename std::enable_if<type == S2CPacketType::ProtocolBegin, bool>::type >
-	void registerClassHelp() {};
+	typename std::enable_if<has, void>::type registerClassMember()
+	{
+		typedef void(*handleFuncPtr)(std::shared_ptr < S2CPacket<type> > &);
+		registerHandler<type>((handleFuncPtr)&T::handlePacket);
+	}
 
 	template<typename T, S2CPacketType type, bool has>
-	typename std::enable_if<has, void>::type registerClassMember();
-
-	template<typename T, S2CPacketType type, bool has,
-		typename = typename std::enable_if<!has, void>::type>
-	void registerClassMember() {};
-
-};
-
-
-template<typename T, S2CPacketType type>
-inline
-void S2CPacketDispatch::registerHandle(MethodCallback<S2CPacket<type>, T>methodCallback, T* thisPtr)
-{
-	registerHandler<type>(std::bind(methodCallback, thisPtr));
-}
-
-
-template<typename T, S2CPacketType type, bool has>
-inline
-typename std::enable_if<type != S2CPacketType::ProtocolBegin, void>::type S2CPacketDispatch::registerClassHelp()
-{
-	
-	registerClassHelp<T, (type - 1),
-							HasS2CPacketHandle<T, (type - 1)>::value >();
-
-	registerClassMember<T, type, has>();
-	
-}
-
-template<typename T, S2CPacketType type, bool has>
-inline 
-typename std::enable_if<has, void>::type  S2CPacketDispatch::registerClassMember()
-{
-	typedef void(*handleFuncPtr)(std::shared_ptr < S2CPacket<type> > &);
-	registerHandler<type>((handleFuncPtr)&T::handlePacket);
-}
+	typename std::enable_if<!has, void>::type registerClassMember() {};
 
 #endif // !__ClientNetPlayer_H__
 

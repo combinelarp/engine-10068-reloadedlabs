@@ -5,7 +5,7 @@ APP_ABI := armeabi-v7a
 #armeabi-v7a x86s
 #APP_ABI := arm64-v8a
 APP_PLATFORM := android-15
-APP_STL := gnustl_static
+APP_STL := c++_shared
 
 #APP_CPPFLAGS := -std=c++14 -pthread -fexceptions -frtti -D__cplusplus=201403
 APP_CPPFLAGS := -std=c++14 -pthread -fexceptions -frtti -ftemplate-depth=8000
