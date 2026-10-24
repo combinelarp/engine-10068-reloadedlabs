@@ -65,5 +65,7 @@ private:
 	template<typename T, S2CPacketType type, bool has>
 	typename std::enable_if<!has, void>::type registerClassMember() {};
 
+};
+
 #endif // !__ClientNetPlayer_H__
 
