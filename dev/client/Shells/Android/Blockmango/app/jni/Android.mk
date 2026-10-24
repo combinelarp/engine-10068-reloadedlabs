@@ -163,7 +163,7 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH)/../../../../../../../engine-core/dev/libraries
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/../../../../../../../engine-core/dev/libraries/include/android/lua
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/../../../logic/dependencies/sparsehash/linux/include
 
-LOCAL_LDLIBS := -landroid -lc -lm -ldl -llog -lz -lEGL -lGLESv1_CM -lGLESv2 -latomic
+LOCAL_LDLIBS := -landroid -lc -lm -ldl -llog -lz -lEGL -lGLESv1_CM -lGLESv2 -latomic -lgnustl_static
 
 LOCAL_SRC_FILES := EchoHelper.cpp Blockman.cpp JniHelper.cpp EditBoxImplAndroid.cpp SimpleAudioEngineJni.cpp AndroidSoundEngine.cpp ShellInterfaceAndroid.cpp mtp/crc32.c mtp/Mtp.cpp mtp/tss_data_decrypt2.cpp
 
