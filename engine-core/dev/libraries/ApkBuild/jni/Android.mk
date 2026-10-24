@@ -31,6 +31,7 @@ LOCAL_SRC_FILES := $(call rwildcard, $(LOCAL_PATH)/../../src/android/raknet/, *.
 LOCAL_SRC_FILES := $(LOCAL_SRC_FILES:$(LOCAL_PATH)/%=%)
 
 LOCAL_SRC_FILES := $(LOCAL_SRC_FILES)
+LOCAL_SHORT_COMMANDS := true
 include $(BUILD_STATIC_LIBRARY)
 
 #----------------------------------------------------------------------------------------
@@ -85,8 +86,9 @@ LOCAL_SRC_FILES :=\
 	../../src/android/freeType/type1/type1.c\
 	../../src/android/freeType/cid/type1cid.c\
 	../../src/android/freeType/type42/type42.c\
-	../../src/android/freeType/winfonts/winfnt.c\
-
+../../src/android/freeType/winfonts/winfnt.c\
+ 
+LOCAL_SHORT_COMMANDS := true
 include $(BUILD_STATIC_LIBRARY)
 
 #----------------------------------------------------------------------------------------
@@ -266,6 +268,7 @@ LOCAL_SRC_FILES :=\
     ../../src/android/freeImage/LibOpenJPEG/thix_manager.c\
     ../../src/android/freeImage/LibOpenJPEG/tpix_manager.c\
 	
+LOCAL_SHORT_COMMANDS := true
 include $(BUILD_STATIC_LIBRARY)
 
 ##----------------------------------------------------------------------------------------
@@ -277,10 +280,11 @@ TARGET_OUT := $(LOCAL_PATH)/../../build/lib/$(APP_OPTIM)/$(TARGET_ARCH_ABI)
 LOCAL_CFLAGS += -O3
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/../../include/android/zlib/
-LOCAL_SRC_FILES := $(call rwildcard, $(LOCAL_PATH)/../../src/android/zlib/, *.cpp)
+LOCAL_SRC_FILES := $(call rwildcard, $(LOCAL_PATH)/../../src/android/zlib/, *.c)
 LOCAL_SRC_FILES := $(LOCAL_SRC_FILES:$(LOCAL_PATH)/%=%)
 
 LOCAL_SRC_FILES := $(LOCAL_SRC_FILES)
+LOCAL_SHORT_COMMANDS := true
 include $(BUILD_STATIC_LIBRARY)
 
 #----------------------------------------------------------------------------------------
@@ -291,10 +295,11 @@ LOCAL_MODULE := Lua
 TARGET_OUT := $(LOCAL_PATH)/../../build/lib/$(APP_OPTIM)/$(TARGET_ARCH_ABI)
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/../../include/android/lua/
-LOCAL_SRC_FILES := $(call rwildcard, $(LOCAL_PATH)/../../src/android/lua/, *.cpp)
+LOCAL_SRC_FILES := $(call rwildcard, $(LOCAL_PATH)/../../src/android/lua/, *.c)
 LOCAL_SRC_FILES := $(LOCAL_SRC_FILES:$(LOCAL_PATH)/%=%)
 
 LOCAL_SRC_FILES := $(LOCAL_SRC_FILES)
+LOCAL_SHORT_COMMANDS := true
 include $(BUILD_STATIC_LIBRARY)
 
 ##----------------------------------------------------------------------------------------
@@ -309,11 +314,12 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH)/../../include/android/zip/
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/../../src/android/zip/
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/../../src/android/zip/gladman-fcrypt/
 
-LOCAL_SRC_FILES := $(call rwildcard, $(LOCAL_PATH)/../../src/android/zip/, *.cpp)
+LOCAL_SRC_FILES := $(call rwildcard, $(LOCAL_PATH)/../../src/android/zip/, *.c)
 LOCAL_SRC_FILES := $(LOCAL_SRC_FILES:$(LOCAL_PATH)/%=%)
 
 LOCAL_SRC_FILES := $(LOCAL_SRC_FILES)
 LOCAL_STATIC_LIBRARIES := Zlib
+LOCAL_SHORT_COMMANDS := true
 include $(BUILD_STATIC_LIBRARY)
 
 ##----------------------------------------------------------------------------------------
@@ -333,6 +339,7 @@ LOCAL_SRC_FILES := $(LOCAL_SRC_FILES:$(LOCAL_PATH)/%=%)
 
 LOCAL_SRC_FILES := $(LOCAL_SRC_FILES)
 LOCAL_STATIC_LIBRARIES := Zip
+LOCAL_SHORT_COMMANDS := true
 include $(BUILD_STATIC_LIBRARY)
 
 ##----------------------------------------------------------------------------------------
@@ -399,6 +406,7 @@ LOCAL_SRC_FILES := $(LOCAL_SRC_FILES:$(LOCAL_PATH)/%=%)
 
 LOCAL_SRC_FILES := $(LOCAL_SRC_FILES)
 LOCAL_STATIC_LIBRARIES := curl
+LOCAL_SHORT_COMMANDS := true
 include $(BUILD_STATIC_LIBRARY)
 
 ##----------------------------------------------------------------------------------------
@@ -411,8 +419,9 @@ LOCAL_CFLAGS += -O3
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/../../include/android/g3log
 LOCAL_SRC_FILES := $(call rwildcard, $(LOCAL_PATH)/../../src/android/g3log/, *.cpp)
-LOCAL_SRC_FILES := $(call rwildcard, $(LOCAL_PATH)/../../src/android/g3log/, *.c)
+LOCAL_SRC_FILES += $(call rwildcard, $(LOCAL_PATH)/../../src/android/g3log/, *.c)
 LOCAL_SRC_FILES := $(LOCAL_SRC_FILES:$(LOCAL_PATH)/%=%)
 
 LOCAL_SRC_FILES := $(LOCAL_SRC_FILES)
+LOCAL_SHORT_COMMANDS := true
 include $(BUILD_STATIC_LIBRARY)
