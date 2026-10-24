@@ -225,13 +225,6 @@ void Server::init(const RoomGameConfig& rgConfig)
 {
 	tickPerHeartBeat = rgConfig.heartbeatInterval;
 	m_config = rgConfig;
-	// The game id in serverConfig.json is what this gameserver hosts, so it is
-	// also what every client is told at login (S2CGameInfo.m_gameType). Seed it
-	// before any mode script has had a chance to call setGameType.
-	if (!m_config.gameId.empty())
-	{
-		m_gameType = String(m_config.gameId.c_str());
-	}
 	m_initPos.x = INIT_POS_X;
 	m_initPos.y = INIT_POS_Y;
 	m_initPos.z = INIT_POS_Z;
@@ -263,9 +256,7 @@ void Server::init(const RoomGameConfig& rgConfig)
 	Root::Instance()->initialize(cfg);
 
 #if LORD_PLATFORM == LORD_PLATFORM_WINDOWS
-	// Same game selection as main.cpp: resolve the configured game id, never
-	// just the highest Enable row of ScriptSetting.csv.
-	m_config.scriptDir = PathUtil::ConcatPath(ScriptSetting::loadGameScriptDir(m_config.gameId.c_str(), false), "main").c_str();
+	m_config.scriptDir = PathUtil::ConcatPath(ScriptSetting::loadGameScriptDir("", false), "main").c_str();
 	m_config.gameName = Server::getGameName();
 	String mapDir = cfg.rootPath;
 	mapDir += "\\map\\";
@@ -378,25 +369,11 @@ void Server::init(const RoomGameConfig& rgConfig)
 
 #if LORD_PLATFORM == LORD_PLATFORM_WINDOWS
 	// ---> windows use test server ip and port
-	// Prefer the values from serverConfig.json (read in main), falling back to
-	// the script CSV only when the config did not provide them. The CSV used
-	// to override the port (e.g. 19131) which made the socket unreachable for
-	// clients that connect to the configured 19130.
-	if (m_config.gameIp.empty())
-		m_config.gameIp = ScriptSetting::m_serverIp.c_str();
-	if (m_config.serverPort == 0)
-		m_config.serverPort = ScriptSetting::m_serverPort;
+	m_config.gameIp = ScriptSetting::m_serverIp.c_str();
+	m_config.serverPort = ScriptSetting::m_serverPort;
 #endif
 
-	// Bind the game socket on all interfaces (0.0.0.0) so external players can
-	// reach the server directly through an opened/forwarded port, instead of
-	// only 127.0.0.1 (which forces tunneling via playit). The advertised
-	// room/master-server address stays m_config.gameIp for the server listing.
-#if LORD_PLATFORM == LORD_PLATFORM_WINDOWS
-	m_serverNetwork = LORD::make_shared<ServerNetwork>("0.0.0.0", m_config.serverPort);
-#else
 	m_serverNetwork = LORD::make_shared<ServerNetwork>(m_config.gameIp.c_str(), m_config.serverPort);
-#endif
 	m_pBlockDoorManager = LORD::make_shared<BlockDoorManager>(m_serverWorld);
 	m_pBlockCropsManager = LORD::make_shared<BlockCropsManager>(m_serverWorld);
 	m_pBlockFruitsManager = LORD::make_shared<BlockFruitsManager>(m_serverWorld);
@@ -869,25 +846,8 @@ void Server::uninitSetting()
 
 void Server::setGameType(String& gameType)
 {
-	// m_gameType is what reaches the client: C2SInitPacketHandles.cpp:188 puts
-	// it into S2CGameInfo.m_gameType and the client turns that into
-	// CGame::setGameType(). It used to be taken verbatim from the loaded mode
-	// script, so running TinyTown made every client believe it was in g1020 no
-	// matter which game this gameserver actually hosts. The configured game id
-	// is authoritative for the reported type; the script's own type still
-	// drives the per-mode gameplay settings below.
-	String reported = gameType;
-	if (!m_config.gameId.empty())
-	{
-		reported = String(m_config.gameId.c_str());
-		if (m_config.gameId != gameType.c_str())
-		{
-			LordLogWarning("[GAME] mode script asked to report game type '%s' but this gameserver hosts '%s' - clients will be told '%s'",
-				gameType.c_str(), m_config.gameId.c_str(), reported.c_str());
-		}
-	}
-	m_gameType = reported;
-	CarSetting::m_sbIsCarFree = GameTypeSetting::IsCarFree(gameType);
+	m_gameType = gameType;
+	CarSetting::m_sbIsCarFree = GameTypeSetting::IsCarFree(m_gameType);
 	GameAnalyticsSetting::setGameType(m_gameType);
 	LogicSetting::Instance()->setGameType(GameTypeSetting::GetGameType(gameType));
 }

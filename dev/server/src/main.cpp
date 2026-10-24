@@ -36,16 +36,10 @@ RoomGameConfig getTestRGConfig(const char * curPath) {
 
 	fclose(fp);
 
+	ScriptSetting::loadGameScriptDir("", false);
+
 	RoomGameConfig cfg;
 	cfg.gameId = doc["gameId"].GetString();
-
-	// Pick the game scripts, map and reported game type from the game id this
-	// server is configured with. Passing "" here made the selection fall back
-	// to the ScriptSetting.csv Enable column alone, so the server could run a
-	// completely different game (and report a different game type) than the
-	// one in serverConfig.json.
-	ScriptSetting::loadGameScriptDir(cfg.gameId.c_str(), false);
-
 	cfg.gameIp = doc["gameIp"].GetString();
 	cfg.serverPort = doc["serverPort"].GetInt();
 	cfg.monitorAddr = doc["monitorAddr"].GetString();

@@ -27,7 +27,6 @@
 #include "Entity/EntitySkillThrowable.h"
 #include "Entity/EntityBlockmanEmpty.h"
 #include "Network/protocol/S2CPackets1.h"
-#include "Network/ForkProtocol.h"
 #include "Entity/EntityFlyingMount.h"
 #include "Entity/EntityFloatingMount.h"
 #include "Setting/MountSetting.h"
@@ -419,33 +418,33 @@ void ServerPacketSender::sendEntityTeleportToTrackingPlayers(const EntityPlayers
 void ServerPacketSender::sendEntityMovementToTrackingPlayers(const EntityPlayers& trackingPlayers,
 	int entityId, i16 x, i16 y, i16 z, real32 yaw, real32 pitch)
 {
-	auto stockPacket = LORD::make_shared<S2CPacketEntityMovement>(entityId, x, y, z, yaw, pitch);
+	auto packet = LORD::make_shared<S2CPacketEntityMovement>(entityId, x, y, z, yaw, pitch);
 	for (auto it : trackingPlayers)
 	{
 		EntityPlayerMP* pPlayer = (EntityPlayerMP*)(it.second);
-		Server::Instance()->getNetwork()->sendPacket(stockPacket, pPlayer->getRaknetID());
+		Server::Instance()->getNetwork()->sendPacket(packet, pPlayer->getRaknetID());
 	}
 }
 
 void ServerPacketSender::sendEntityMovementToTrackingPlayers(const EntityPlayers& trackingPlayers,
 	int entityId, real32 yaw, real32 pitch)
 {
-	auto stockPacket = LORD::make_shared<S2CPacketEntityMovement>(entityId, yaw, pitch);
+	auto packet = LORD::make_shared<S2CPacketEntityMovement>(entityId, yaw, pitch);
 	for (auto it : trackingPlayers)
 	{
 		EntityPlayerMP* pPlayer = (EntityPlayerMP*)(it.second);
-		Server::Instance()->getNetwork()->sendPacket(stockPacket, pPlayer->getRaknetID());
+		Server::Instance()->getNetwork()->sendPacket(packet, pPlayer->getRaknetID());
 	}
 }
 
 void ServerPacketSender::sendEntityMovementToTrackingPlayers(const EntityPlayers& trackingPlayers,
 	int entityId, i16 x, i16 y, i16 z)
 {
-	auto stockPacket = LORD::make_shared<S2CPacketEntityMovement>(entityId, x, y, z);
+	auto packet = LORD::make_shared<S2CPacketEntityMovement>(entityId, x, y, z);
 	for (auto it : trackingPlayers)
 	{
 		EntityPlayerMP* pPlayer = (EntityPlayerMP*)(it.second);
-		Server::Instance()->getNetwork()->sendPacket(stockPacket, pPlayer->getRaknetID());
+		Server::Instance()->getNetwork()->sendPacket(packet, pPlayer->getRaknetID());
 	}
 }
 

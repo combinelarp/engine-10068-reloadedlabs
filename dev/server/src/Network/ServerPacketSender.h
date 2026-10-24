@@ -279,7 +279,6 @@ public:
 	void broadCastBasementLife(float curLife, float maxLife);
 
 	void sendPlayerTeleport(const BLOCKMAN::EntityPlayerMP* player, ui64 targetRaknetId);
-	void sendForkPlayerMovementRecord(const BLOCKMAN::EntityPlayerMP* player, ui64 targetRaknetId);
 	void broadCastPlayerMovementInput(int playerEntityId);
 	void broadCastPlayerRotation(int playerEntityId, bool includeSelf = false);
 	void broadCastPlayerMovement(int playerEntityId, bool includeSelf);

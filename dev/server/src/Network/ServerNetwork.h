@@ -92,7 +92,6 @@ public:
 	std::shared_ptr<ClientPeer> findPlayerByPlatformUserId(ui64 userId);
 	std::shared_ptr<ServerPacketSender> getSender() { return m_packetSender; }
 	std::shared_ptr<ServerCommonDataSender> getCommonSender() { return m_commonDataSender; }
-	std::shared_ptr<ServerNetworkRecver> getNetworkRecver() { return m_networkRecver; }
 
 	std::map<ui64, std::shared_ptr<ClientPeer>> getPlayers() { return m_playerMap; }
 	std::set<ui64> getPlatformUserIds();

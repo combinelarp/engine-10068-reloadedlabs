@@ -10,10 +10,8 @@
 #include "Entity/EntityActorCannon.h"
 #include "Entity/EntityBlockmanEmpty.h"
 #include "Network/protocol/S2CPackets2.h"
-#include "Network/protocol/S2CPackets1.h"
 #include "Entity/TeleportPositionConverter.h"
 #include "Util/PlayerPrefs.h"
-#include "Network/ForkProtocol.h"
 
 using namespace BLOCKMAN;
 
@@ -346,11 +344,12 @@ void ServerPacketSender::broadCastPlayerRotation(int playerEntityId, bool includ
 
 	auto packet = LORD::make_shared<S2CPacketSyncPlayerRotation>();
 	packet->playerEntityId = playerEntityId;
-	// 10096 rotation is real32 degrees (see S2CPackets2.h). The old packed-byte
-	// encoding made the fork client read 8 bytes where we wrote 2 and drop the
-	// rest of every datagram.
-	packet->rotationYaw = Math::WrapDegree(pPlayer->rotationYaw);
-	packet->rotationPitch = Math::Clamp(Math::WrapDegree(pPlayer->rotationPitch), -90.f, 90.f);
+	float pitch = Math::Clamp(Math::WrapDegree(pPlayer->rotationPitch), -90.f, 90.f);
+	unsigned char fixedLengthPitch = static_cast<unsigned char>((pitch + 90) / 180 * 255);
+	packet->rotationPitch = fixedLengthPitch;
+	float yaw = Math::WrapDegree(pPlayer->rotationYaw);
+	unsigned char fixedLengthYaw = static_cast<unsigned char>((yaw + 180) / 360 * 256);
+	packet->rotationYaw = fixedLengthYaw;
 	sendPacketToTrackingPlayers(playerEntityId, packet, includeSelf);
 }
 
@@ -448,75 +447,11 @@ void ServerPacketSender::sendGameTipNotification(ui64 rakssid, int msgType, Chat
 	}
 }
 
-void ServerPacketSender::sendForkPlayerMovementRecord(const EntityPlayerMP* player, ui64 targetRaknetId)
-{
-	auto targetPlayer = ServerNetwork::Instance()->findPlayerByRakssid(targetRaknetId);
-	if (!targetPlayer || !targetPlayer->hasLogon())
-		return;
-
-	// Fork (2023 BlockyVerse) compressed position record: 16 bytes holding
-	// per-viewer deltas and packed orientation (see ForkProtocol.h). Deltas
-	// are relative to a per-(entity, viewer) anchor exactly like the 2020
-	// TeleportPositionConverter, which we reuse so successive records decoded
-	// against the same anchor reconstruct the absolute position.
-	auto relativePos = TeleportPositionConverter::ConvertToRelativeAndUpdateAnchor(
-		player->entityId, targetRaknetId, player->position);
-
-	ui8 record[16];
-	float prev[3] = { 0.0f, 0.0f, 0.0f };
-	float cur[3] = { relativePos.x, relativePos.y, relativePos.z };
-	// direction normalization: yaw/pitch stored as normalized 0..1 values
-	// scaled by 32768 (clamped to a half turn) in the fork record.
-	float yawNorm = Math::WrapDegree(player->rotationYaw) / 360.0f;
-	float pitchNorm = (Math::Clamp(Math::WrapDegree(player->rotationPitch), -90.f, 90.f) + 90.f) / 180.0f;
-	ForkProtocol::packMovementRecord(record, prev, cur,
-		static_cast<ui32>(player->entityId), 0, yawNorm, pitchNorm, 0x20);
-
-	// Deliver inside the existing S2CPacketEntityMovement (EntityMovement).
-	// The fork client reads the trailing 16 payload bytes of this packet as
-	// the compressed record; entityId (i32) already matches the record id.
-	auto packet = LORD::make_shared<S2CPacketEntityMovement>(
-		player->entityId,
-		static_cast<i16>(record[0]),
-		static_cast<i16>(record[1]),
-		static_cast<i16>(record[2]));
-	packet->m_yaw = (static_cast<float>(record[5]) * 256.0f + record[4]) / 180.0f;
-	packet->m_pitch = (static_cast<float>(record[7]) * 256.0f + record[6]) / 180.0f;
-	bool bMoving = player->movementInput != nullptr
-		&& (player->movementInput->moveForward != 0.0f || player->movementInput->moveStrafe != 0.0f);
-	packet->m_moving = bMoving;
-	packet->m_rotating = true;
-	Server::Instance()->getNetwork()->sendPacket(packet, targetRaknetId);
-}
-
 void ServerPacketSender::sendPlayerTeleport(const EntityPlayerMP* player, ui64 targetRaknetId)
 {
 	auto targetPlayer = ServerNetwork::Instance()->findPlayerByRakssid(targetRaknetId);
 	if (!targetPlayer || !targetPlayer->hasLogon())
 		return;
-
-	// 10096 fork clients cannot decode the stock anchored EntityPlayerTeleport
-	// (id 4). client.log is full of "packet decode error ... Failed to read
-	// Real/String: reached end of stream" for exactly these bodies, and every
-	// failure drops the whole datagram, so on a fork client the other avatar
-	// never moved, stayed glued to the spawn point (right on top of the local
-	// camera -> looks huge) and then vanished with the rest of the stream.
-	//
-	// The fork client does decode S2CPacketSpawnPlayer - that is how the avatar
-	// appears at all - and its handler removes any existing avatar for that
-	// server id before creating the new one (client
-	// S2CEntityPacketHandles.cpp:234-241), so re-issuing the spawn is a safe,
-	// absolute (float position + yaw/pitch) position update that cannot leave a
-	// duplicate model behind. Never mirror the local player onto itself.
-	if (ForkProtocol::isForkSession(targetRaknetId))
-	{
-		if (player->getRaknetID() == targetRaknetId)
-		{
-			return;
-		}
-		sendEntitySpawn(targetRaknetId, const_cast<EntityPlayerMP*>(player));
-		return;
-	}
 
 	auto packet = LORD::make_shared<S2CPacketEntityPlayerTeleport>();
 	auto relativePos = TeleportPositionConverter::ConvertToRelativeAndUpdateAnchor(
@@ -676,8 +611,6 @@ void ServerPacketSender::showBuildGuessUi(ui64 rakssId, int guess_room_id, Strin
 
 void ServerPacketSender::sendGameSettlementExtra(ui64 rakssId, bool guess_right, String guess_name, int guess_reward)
 {
-	// Guess/rank extras belong to the same settlement screen; the join-triggered
-	// copy is dropped for fork sessions centrally in ServerNetwork::sendPacket.
 	auto packet = LORD::make_shared<S2CPacketGameSettlementExtra>();
 	packet->guess_right = guess_right;
 	packet->guess_name = guess_name;

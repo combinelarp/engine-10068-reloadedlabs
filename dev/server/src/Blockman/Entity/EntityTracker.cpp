@@ -359,26 +359,4 @@ bool EntityTracker::forceTeleport(int entityId)
 	return true;
 }
 
-void EntityTracker::respawnEntitiesForReadyPlayer()
-{
-	if (!m_world)
-	{
-		return;
-	}
-
-	// spawnOrRemoveSelfEntityFor re-evaluates trackingPlayers for this entry
-	// against every player in the world. Now that the new client has passed
-	// canSyncEntity(), both directions resolve: the new client is added to the
-	// other entries' tracking sets (so it sees them) and the other players are
-	// added to the new client's entry (so they see it).
-	auto players = m_world->getPlayers();
-	for (auto entry : m_entitySet)
-	{
-		if (entry)
-		{
-			entry->spawnOrRemoveSelfEntityFor(players, false);
-		}
-	}
-}
-
 }

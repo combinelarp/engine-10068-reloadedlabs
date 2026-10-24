@@ -25,7 +25,6 @@
 #include "Network/protocol/S2CPackets1.h"
 #include "Util/StringUtil.h"
 #include "Util/PlayerPrefs.h"
-#include "Network/ForkProtocol.h"
 #include "Network/protocol/CommonDataBuilder.h"
 #include "Script/Event/LogicScriptEvents.h"
 #include "Object/Root.h"
@@ -125,15 +124,7 @@ void ClientPeer::doAttack(int targetEngityRuntimeId, float targetX, float target
 
 		Vector3 clientTargetPos(targetX, targetY, targetZ);
 
-		// 10096 fork: its avatars report positions on a different cadence than
-		// the stock client, so the claimed hit position can legitimately sit
-		// further than 18 blocks from the server-side attacker position (and the
-		// 3 block "target moved" guard trips too, silently cancelling the hit).
-		// Sessions proven to be fork clients are trusted here, exactly like the
-		// speed / in-the-air checks below - stock clients keep both guards.
-		const bool forkSession = ForkProtocol::isForkSession(getRakssid());
-
-		if (!forkSession && clientTargetPos.distanceTo(lastPos) > 18
+		if (clientTargetPos.distanceTo(lastPos) > 18
 			&& !targetPlayer->isDead && !m_entityPlayer->isDead
 			&& !targetPlayer->isForceTeleport() && !m_entityPlayer->isForceTeleport())
 		{
@@ -148,7 +139,7 @@ void ClientPeer::doAttack(int targetEngityRuntimeId, float targetX, float target
 		}
 		m_entityPlayer->setIntProperty("AttackCheatTimes", 0);
 
-		if (!forkSession && clientTargetPos.distanceTo(targetPlayer->position) > 3)
+		if (clientTargetPos.distanceTo(targetPlayer->position) > 3)
 		{
 			LordLogError("handlePacket_AttackPacket from %s, target entity pos changed", m_name.c_str());
 			ServerNetwork::Instance()->getSender()->syncPlayerMovement(this->getRakssid(), targetEngityRuntimeId);
@@ -201,27 +192,14 @@ void ClientPeer::sendLoginResult(bool suc, int teamId, String teamName, int curP
 		LordLogInfo("ClientPeer::sendLoginResult succ and sendUserIn to room, name[%s] platform uid[" U64FMT "] entityID[%d] rankID[" U64FMT "] teamId[%d] teamName[%s]",
 			m_name.c_str(), m_platformUserId, m_entityPlayer->entityId, getRakssid(), teamId, teamName.c_str());
 		setTeamInfo(teamId, teamName);
-		// The 10096 fork client needs the expanded LoginResult (id 50) carrying
-		// the player profile inline before it leaves its "Loading player data..."
-		// screen. This used to be gated behind the dead "UseForkProtocol" pref
-		// (isEnabled() is always false), which made a plain login send only the
-		// stock 4-byte LoginResult and left the fork client stuck on the loading
-		// screen. Send the expanded profile unconditionally: this matches the
-		// working build and the reference capture, which shows the expanded id 50
-		// at login (frame 270). DBDataReady (id 348) is emitted further below,
-		// AFTER the profile - see the note there.
-		ForkProtocol::sendLoginPackets(getRakssid(), m_name.c_str(), static_cast<uint64_t>(m_platformUserId),
-			(m_entityPlayer != nullptr) ? m_entityPlayer->entityId : 0);
+		ServerNetwork::Instance()->getSender()->sendLoginResult(getRakssid(), (int32_t)NETWORK_DEFINE::PacketLoginResult::emSucc);
 		UserAttrInfo attrInfo;
 		if (Server::Instance()->getEnableRoom())
 		{
 			Server::Instance()->getRoomManager()->getUserAttrInfo(this->m_platformUserId, attrInfo);
 			Server::Instance()->getRoomManager()->getRoomClient()->sendUserIn(this->m_platformUserId, attrInfo.requestId);
 		}
-
-		// Tell each ALREADY-LOGGED-IN peer about US so they spawn our body.
-		// Directed sends (not broadcast) because broadCastEntityPacket silently
-		// drops packets for peers whose m_logon flag is not yet set.
+		ServerNetwork::Instance()->getSender()->sendUserIn(0, getPlatformUserId(), getName(), teamId, teamName, curPlayer, maxPlayer, attrInfo);
 		for (auto player : ServerNetwork::Instance()->getPlayers())
 		{
 			if (player.second->getRakssid() != this->getRakssid() && player.second->m_logon)
@@ -231,27 +209,11 @@ void ClientPeer::sendLoginResult(bool suc, int teamId, String teamName, int curP
 				{
 					Server::Instance()->getRoomManager()->getUserAttrInfo(player.second->m_platformUserId, info);
 				}
-				ServerNetwork::Instance()->getSender()->sendUserIn(player.second->getRakssid(), getPlatformUserId(),
-					getName(), teamId, teamName, curPlayer, maxPlayer, attrInfo);
+
+				ServerNetwork::Instance()->getSender()->sendUserIn(getRakssid(), player.second->getPlatformUserId(), 
+					player.second->getName(), player.second->getTeamId(), player.second->getTeamName(), curPlayer, maxPlayer, info);
 			}
 		}
-
-		// DBDataReady (id 348) MUST be the last login packet.
-		//
-		// It flips GameClient::isDbDataReady(), which gates Blockman::onGameReady()
-		// - and onGameReady() immediately fires C2SPacketClientReady and drops the
-		// client into the world. Sending it any earlier let the client finish
-		// loading while UserManager was still empty, which crashed WinShell.
-		//
-		// CRITICAL: do NOT send standalone S2CPacketUserIn to the connecting
-		// player here. The fork client's UserIn handler dereferences m_pWorld
-		// unconditionally (S2CPlayerActionPacketHandles.cpp:491-492); during
-		// login m_pWorld is still null, so any UserIn packet crashes the client
-		// before it can process DBDataReady. The player's own profile already
-		// rides INLINE inside the expanded id-50 body from sendLoginPackets,
-		// which the fork parses as part of LoginResult (not as a separate
-		// UserIn) and therefore never hits the null-world path.
-		ServerNetwork::Instance()->getSender()->sendPlayerDBDataReady(getRakssid());
 
 		checkUserRelation();
 	}
@@ -268,27 +230,6 @@ void ClientPeer::movePlayer(float toX, float toY, float toZ, float toYaw, float 
 	if (!m_entityPlayer || m_entityPlayer->playerConqueredTheEnd)
 		return;
 
-	// The 2023 fork client moves the same way as a stock client but reports its
-	// position at its own cadence and sends its movement under a renumbered id,
-	// which can legitimately exceed the per-frame heuristics of the stock
-	// anti-cheat and rubber-band (setPlayerLocation + forceTeleport) or kick the
-	// player. Once a session is classified as fork we trust its movement.
-	const bool forkSession = ForkProtocol::isForkSession(getRakssid());
-
-	// The 10096 fork client spawns at the position GameInfo gave it, while the
-	// server places the entity at the Lua respawnPos. Until the first movement
-	// arrives the two disagree by thousands of blocks, which is what made the
-	// tracker's spawn-time teleport yank the client (the "fling on spawn").
-	// Adopt the client's own position once, before any delta math runs, so the
-	// server and the client start from the same place - identical to how a stock
-	// 10068 client behaves, where the server never overrides the spawn point.
-	// toY == -999.0f marks a rotation-only packet with no position, so skip it.
-	if (forkSession && !hasMoved && toY != -999.0f)
-	{
-		m_entityPlayer->setPositionAndRotation(Vector3(toX, toY, toZ), toYaw, toPitch);
-		lastPos = m_entityPlayer->position;
-	}
-
 	if (!fromServer && (m_entityPlayer->isOnVehicle() || m_entityPlayer->isOnAircraft()))
 		return;
 
@@ -301,7 +242,7 @@ void ClientPeer::movePlayer(float toX, float toY, float toZ, float toYaw, float 
 	resetLogicSpeedUpCheatIfNeed(moveLenSqrXZ, onGround, fromServer);
 	resetInTheAirCheatIfNeed(onGround, fromServer);
 
-	if (!forkSession && m_entityPlayer->isForceTeleport() && !fromServer)
+	if (m_entityPlayer->isForceTeleport() && !fromServer)
 	{
 		if (moveLenSqr > 27)
 		{
@@ -378,8 +319,7 @@ void ClientPeer::movePlayer(float toX, float toY, float toZ, float toYaw, float 
 			toX, toY, toZ, onGround ? 1 : 0, entityMotion.x, entityMotion.y, entityMotion.z, motionLenSqr, moveLenSqrXZ, maxMoveDis,
 			fromServer ? 1 : 0);*/
 
-		if (!fromServer && motionLenSqr > maxMoveDis && !m_entityPlayer->isOnVehicle() && !m_entityPlayer->isOnAircraft() && !m_entityPlayer->isWatchMode()
-			&& !ForkProtocol::isEnabled() && !forkSession)
+		if (!fromServer && motionLenSqr > maxMoveDis && !m_entityPlayer->isOnVehicle() && !m_entityPlayer->isOnAircraft() && !m_entityPlayer->isWatchMode())
 		{
 			setPlayerLocation(lastPos, m_entityPlayer->rotationYaw, m_entityPlayer->rotationPitch);
 			EntityTracker::Instance()->forceTeleport(m_entityPlayer->entityId);
@@ -436,8 +376,8 @@ void ClientPeer::movePlayer(float toX, float toY, float toZ, float toYaw, float 
 
 		bool collidedAfterMoved = !(pWorld->getCollidingBoundingBoxes(m_entityPlayer, m_entityPlayer->boundingBox.contract(extend)).empty());
 
-if ((!fromServer && noCollisionBeforeMove && (wrongMove || collidedAfterMoved) && !m_entityPlayer->isOnAircraft() && !m_entityPlayer->isWatchMode() && !ForkProtocol::isEnabled() && !forkSession)
-		 || !SCRIPT_EVENT::WrongMoveEvent::invoke(m_entityPlayer->entityId, playerPos))
+		 if ((!fromServer && noCollisionBeforeMove && (wrongMove || collidedAfterMoved) && !m_entityPlayer->isOnAircraft() && !m_entityPlayer->isWatchMode()) 
+			 || !SCRIPT_EVENT::WrongMoveEvent::invoke(m_entityPlayer->entityId, playerPos))
 		{
 			setPlayerLocation(lastPos, yaw, pitch); 
 			EntityTracker::Instance()->forceTeleport(m_entityPlayer->entityId);
@@ -450,7 +390,7 @@ if ((!fromServer && noCollisionBeforeMove && (wrongMove || collidedAfterMoved) &
 			return;
 		}
 
-		 if (!forkSession && checkLogicSpeedUpCheat(moveLenSqrXZ, onGround, fromServer) && SCRIPT_EVENT::NeedLogicSpeedUpCheatEvent::invoke(true)) {
+		 if (checkLogicSpeedUpCheat(moveLenSqrXZ, onGround, fromServer) && SCRIPT_EVENT::NeedLogicSpeedUpCheatEvent::invoke(true)) {
 			 ServerNetwork::Instance()->getSender()->sendGameover(m_rakSsid, "logic speed up cheat detected", 10);
 			 LordLogError("movePlayer failed, %s logic speed up hack, sessionid " U64FMT ", platform id:" U64FMT,
 				 getName().c_str(), m_rakSsid, getPlatformUserId());
@@ -462,30 +402,10 @@ if ((!fromServer && noCollisionBeforeMove && (wrongMove || collidedAfterMoved) &
 		m_entityPlayer->updateFlyingState(m_entityPlayer->position.y - dy, onGround);
 
 		// check on air cheat: set y value on client and lock it
-		if (!forkSession && checkInTheAirCheat(onGround, fromServer)) {
+		if (checkInTheAirCheat(onGround, fromServer)) {
 			ServerNetwork::Instance()->getSender()->sendGameover(m_rakSsid, "in the air cheat detected", 9);
 			LordLogError("ClientPeer::movePlayer, %s in the air hack detected, sessionid " U64FMT ", platform id:" U64FMT,
 				getName().c_str(), m_rakSsid, getPlatformUserId());
-		}
-
-		// 10096 replication: the fork client reports its movement under a
-		// renumbered id (see ForkProtocol::injectForkMovement), so the stock C2S
-		// MovementInput / SendPlayerRotation handlers - the ones that normally
-		// call broadCastPlayerRotation + broadCastPlayerMovement - NEVER run for
-		// it. Without that broadcast no other client ever receives
-		// S2CPacketEntityPlayerTeleport, the anchored "player is here" packet,
-		// so on every other screen this player stayed frozen at its spawn
-		// position. Relay exactly what those stock handlers would have relayed:
-		// the rotation packet refreshes the viewers' next-Yaw/Pitch, then the
-		// movement packet places the avatar at its CURRENT absolute position
-		// (client S2CEntityPacketHandles.cpp:872 converts the anchor back and
-		// setPositionAndRotation2(..., 3) interpolates it smoothly).
-		if (forkSession && !fromServer && !m_entityPlayer->isOnVehicle() && !m_entityPlayer->isWatchMode())
-		{
-			auto sender = ServerNetwork::Instance()->getSender();
-			if (rotating)
-				sender->broadCastPlayerRotation(m_entityPlayer->entityId, false);
-			sender->broadCastPlayerMovement(m_entityPlayer->entityId, false);
 		}
 	}
 	else if (currentTicks % 20 == 0)
@@ -597,14 +517,6 @@ bool ClientPeer::checkInTheAirCheat(bool onGround, bool fromServer) {
 
 void ClientPeer::onSpawn(String name, EntityPlayerMP *mpPlayer)
 {
-	// The joining client has just finished loading into the world. Drop it from
-	// the join pipeline and re-arm the settlement grace window from THIS stage,
-	// so the choke measures from the moment the other player actually entered
-	// the world instead of from its (much earlier) login - the mode's reaction
-	// and the reward web call behind it both land after this point.
-	ForkProtocol::notePeerSpawned(getRakssid());
-	ForkProtocol::markPlayerJoined(LORD::Root::Instance()->getCurrentTime());
-
 	m_name = name;
 	m_entityPlayer = mpPlayer;
 	m_entityPlayer->setShowName(m_showName);
@@ -615,11 +527,6 @@ void ClientPeer::login(String clientInfo, bool enableIndie, int gameTimeToday)
 {
 	m_logon = true;
 
-	// Record this join so the settlement choke can tell the spurious
-	// "another player joined -> match over" screen from a genuine match-over
-	// (see ForkProtocol::settlementSuppressedByJoinWindow).
-	ForkProtocol::markPlayerJoined(LORD::Root::Instance()->getCurrentTime());
-
 	Document doc = Document();
 	doc.Parse(clientInfo.c_str());
 	if (!doc.HasParseError())
@@ -628,18 +535,8 @@ void ClientPeer::login(String clientInfo, bool enableIndie, int gameTimeToday)
 		m_packageName = doc.HasMember("package_name") ? doc.FindMember("package_name")->value.GetString() : "com.sandboxol.blockymods";
 	}
 
-	// The 10096 fork client stalls on its "Loading player data..." screen unless
-	// it receives DBDataReady (id 348). It already gets one copy inline at
-	// offset 317 of the GameInfo batch, but the client's decode loop aborts the
-	// rest of a datagram on the first packet it cannot decode, so an inline copy
-	// is not guaranteed to survive. Send it here as its own standalone message
-	// (empty body, cannot fail to decode) the moment the Lua login event
-	// succeeds. sendLoginResult() emits another copy after the player profile;
-	// DBDataReady is idempotent on the client.
 	if (SCRIPT_EVENT::PlayerLoginEvent::invoke(this, clientInfo, enableIndie, gameTimeToday))
-	{
 		ServerNetwork::Instance()->getSender()->sendPlayerDBDataReady(getRakssid());
-	}
 
 	loadUserMoney();
 	if (!LuaEngine::getInstance()->isLoadSuc()) {
@@ -749,32 +646,19 @@ void ClientPeer::resetPos(float x, float y, float z, float yaw)
 
 void ClientPeer::setShowName(String name, ui64 targetId)
 {
-	// Always remember the name, even if the entity does not exist yet.
-	//
-	// C2SPacketLogin calls this at C2SInitPacketHandles.cpp:61, which is BEFORE
-	// the EntityPlayerMP is created (same function, line ~142). The old code
-	// bailed out on `m_entityPlayer != NULL` without storing anything, so
-	// m_showName kept its "noshowname" default; onSpawn() then applied that
-	// default to the entity and every OTHER client rendered "noshowname" as the
-	// nametag instead of the player's real name.
-	m_showName = name;
-
-	if (m_entityPlayer == NULL)
-	{
-		// Nothing to broadcast yet; onSpawn() will pick m_showName up.
-		return;
-	}
-
-	if (targetId == 0)
-	{
-		m_entityPlayer->setShowName(m_showName);
-		Server::Instance()->getNetwork()->getSender()->broadCastChangePlayerInfo(m_entityPlayer);
-	}
-	else
-	{
-		m_entityPlayer->setShowName(name);
-		Server::Instance()->getNetwork()->getSender()->sendChangePlayerInfo(targetId, m_entityPlayer);
-		m_entityPlayer->setShowName(m_showName);
+	if (m_entityPlayer != NULL) {
+		if (targetId == 0)
+		{
+			m_showName = name;
+			m_entityPlayer->setShowName(m_showName);
+			Server::Instance()->getNetwork()->getSender()->broadCastChangePlayerInfo(m_entityPlayer);
+		}
+		else
+		{
+			m_entityPlayer->setShowName(name);
+			Server::Instance()->getNetwork()->getSender()->sendChangePlayerInfo(targetId, m_entityPlayer);
+			m_entityPlayer->setShowName(m_showName);
+		}
 	}
 }
 
@@ -809,22 +693,6 @@ void ClientPeer::rebirth()
 			getRakssid(), getName(), hasLogon() ? "true" : "false");
 		return;
 	}
-
-	// Every C2SPacketRebirth runs the full stock respawn path below, whether
-	// the player is dead, watching, or the 10096 fork's post-ClientReady
-	// handshake: rebuild the server entity at respawnPos, answer with
-	// S2CPacketRebirth, re-spawn it and re-fire PlayerRespawnEvent /
-	// PlayerAfterRespawnEvent. This is the exact respawn the stock 10068
-	// client performs, and it is the only one that actually revives the
-	// player - a partial "just send the rebirth packet" answer rebuilt only
-	// the client side, desynced it from the server entity, and never brought
-	// the 10096 client back to life.
-	//
-	// Cancel any server-side auto-respawn countdown armed in onDeath(): a
-	// mode may revive the player itself (Lua RespawnHelper) before the fixed
-	// 5s timer expires, and without this the timer would fire a second
-	// rebirth on the already-alive player.
-	pPlayer->m_respawnCountdown = 0;
 
 	auto pworld = Server::Instance()->getWorld();
 	Vector3i spawnPos = getRespawnPos();

@@ -5,13 +5,10 @@
 #include "Core.h"
 #include "Setting/MultiLanTipSetting.h"
 #include "Network/protocol/AutoRegisterPacketS2C.h"
-#include "Network/protocol/DataPacket.h"
-#include "Network/protocol/S2CPackets3.h"
 #include "Entity/TeleportPositionConverter.h"
 #include "Chat/ChatComponent.h"
 #include "Object/Root.h"
 #include "Util/PlayerPrefs.h"
-#include "Network/ForkProtocol.h"
 
 #if LORD_PLATFORM == LORD_PLATFORM_WINDOWS
 #define I64FMT "%I64d"
@@ -57,12 +54,6 @@ ServerNetwork::~ServerNetwork(void)
 
 bool ServerNetwork::onServerNetworkConnSucc(const ui64 rakssid, const LORD::String& clientIp)
 {
-	// The earliest possible join marker: the settlement choke has to be armed
-	// from the moment the socket exists, because the mode reacts on login and
-	// the settlement itself only comes back after the (possibly very slow)
-	// reward web call.
-	ForkProtocol::notePeerConnected(rakssid);
-	ForkProtocol::markPlayerJoined(LORD::Root::Instance()->getCurrentTime());
 	auto player = ClientPeer::createPlayer(rakssid, clientIp);
 	m_playerMap[rakssid] = player;
 	if (PlayerPrefs::Instance()->getBoolPrefs("EnableReconnectNetwork"))
@@ -71,12 +62,6 @@ bool ServerNetwork::onServerNetworkConnSucc(const ui64 rakssid, const LORD::Stri
 }
 
 bool ServerNetwork::onServerNetworkDisconnect(const ui64 rakssid) {
-	// Clear fork state (classification + login-handshake marker) even when the
-	// peer never made it into m_playerMap (e.g. it dropped between Login and the
-	// first 179); otherwise a reused raknet id could inherit a stale
-	// "handshake already sent" flag and hang on "Loading player data...".
-	ForkProtocol::clearSession(rakssid);
-	ForkProtocol::notePeerGone(rakssid);
 	auto delPlayer = m_playerMap.find(rakssid);
 	if (delPlayer != m_playerMap.end())
 	{
@@ -91,7 +76,6 @@ bool ServerNetwork::onServerNetworkDisconnect(const ui64 rakssid) {
 }
 
 bool ServerNetwork::onServerNetworkTimeout(const ui64 rakssid) {
-	ForkProtocol::notePeerGone(rakssid);
 	auto timeoutPlayer = m_playerMap.find(rakssid);
 	if (timeoutPlayer != m_playerMap.end())
 	{
@@ -122,263 +106,8 @@ void ServerNetwork::host(ui32 maxSession)
 	m_networkCore->host(maxSession);
 }
 
-namespace
-{
-	// 10096 fork safety net - last line of defence against the SPURIOUS
-	// post-game UI.
-	//
-	// The settlement packets (S2C 54 Settlement, 66 PlayerSettlement,
-	// 67 GameSettlement, 164 GameSettlementExtra) open gui_deadSummary /
-	// gui_finalSummary in the client (S2CPlayerActionPacketHandles.cpp:924 and
-	// :938 -> ReceiveDeadSummaryEvent / ReceiveFinalSummaryEvent). The game-mode
-	// scripts fire them at an ALREADY-PRESENT player the moment ANOTHER client
-	// joins - a bogus "match over" reaction to the join - and closing that
-	// screen crashes the prebuilt 10096 client. Every sender path (a sender, a
-	// Lua HostApi binding, the multicast helper, the reconnect history replay)
-	// funnels through this choke.
-	//
-	// The SAME post-game screen also arrives through the generic key/value
-	// channel: S2CPacketServerCommonData carries @c name/@c key/@c data and the
-	// client hands it to CommonDataDispatch -> "Lua" -> ServerCommonDataEvent
-	// (S2CCommonDataPacketHandles.cpp:134), whose client-side subscribers open
-	// gui_deadSummary / gui_finalSummary. The game-mode Lua scripts reach it
-	// with PacketSender:sendLuaCommonData(rakssid, "<settlement key>", data)
-	// - e.g. "DeadSummaryData", "SingleSettlement", "KeyAdSettlementSingle"
-	// (BedWar), "DeathSettlement" (WalkingDead).
-	//
-	// The screen must appear when the match REALLY ends (the user asked for
-	// this), and must not appear on join. A genuine match-over never coincides
-	// with a join, so a settlement is suppressed for EVERY session while SOME
-	// session is still in its join pipeline (connected, not yet spawned) OR a
-	// join stage happened within ForkProtocol::kJoinSettlementGraceMs. Outside
-	// both the packet is forwarded untouched. Every other packet type - and
-	// every other ServerCommonData key (JoinGameStatus, ServerInfo, exchange,
-	// records, lottery, ...) - passes through unconditionally.
-	//
-	// Fork classification is deliberately NOT consulted here. Both the 10096
-	// fork client and the stock client were still getting the screen because
-	// isForkSession() was false for each of them (never classified, or cleared
-	// by clearSession on the previous disconnect), so the old "stock sessions
-	// keep the stock behaviour" early-out forwarded the packet to both. The
-	// symptom is a join problem, not a protocol problem - key the choke off
-	// the join state alone.
-	bool isForkBlockedCommonDataKey(const String& key)
-	{
-		auto lower = [](char c) -> char
-		{
-			return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
-		};
-		auto containsNoCase = [&key, &lower](const char* needle)
-		{
-			const String lowered(needle);
-			const size_t n = lowered.size();
-			if (key.size() < n)
-			{
-				return false;
-			}
-			for (size_t i = 0; i + n <= key.size(); ++i)
-			{
-				size_t j = 0;
-				for (; j < n; ++j)
-				{
-					if (lower(key[i + j]) != lowered[j])
-					{
-						break;
-					}
-				}
-				if (j == n)
-				{
-					return true;
-				}
-			}
-			return false;
-		};
-		auto equalsNoCase = [&key, &lower](const char* needle)
-		{
-			const String expected(needle);
-			if (key.size() != expected.size())
-			{
-				return false;
-			}
-			for (size_t i = 0; i < key.size(); ++i)
-			{
-				if (lower(key[i]) != lower(expected[i]))
-				{
-					return false;
-				}
-			}
-			return true;
-		};
-
-		if (containsNoCase("settlement") || containsNoCase("summary"))
-		{
-			return true;
-		}
-
-		// Result screens whose key does not contain "settlement"/"summary".
-		// S2CCommonDataPacketHandles.cpp:310/:327 maps these straight onto the
-		// post-game layouts (PIXEL_GUN_RESULT / PIXEL_CHICKEN_AWARD) instead of
-		// routing them through ServerCommonDataEvent, so the substring test
-		// above never saw them.
-		static const char* const kResultScreenKeys[] =
-		{
-			"ShowGameResult", "GameResultExtra", "1v1ResultData",
-			"PersonResultData", "TeamResultData", "ChickenResultData",
-			"ShowChickenResult"
-		};
-		for (size_t i = 0; i < sizeof(kResultScreenKeys) / sizeof(kResultScreenKeys[0]); ++i)
-		{
-			if (equalsNoCase(kResultScreenKeys[i]))
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-
-	// Any session - fork or stock - is subject to this choke, and every other
-	// packet type passes through untouched: the anti-cheat S2CGameover and
-	// GameStatus are both forwarded.
-	//
-	// This is consulted for EVERY outbound packet, so the pid gate runs first
-	// and the join state (three mutex reads) is only sampled once we know the
-	// packet can actually open the post-game screen.
-	bool isForkBlockedResultPacket(std::shared_ptr<DataPacket> packet, ui64 rakssid)
-	{
-		if (!packet)
-		{
-			return false;
-		}
-
-		const S2CPacketType pid = static_cast<S2CPacketType>(packet->pid());
-		// Screens that paint the end-of-match result / score menu.
-		// Client side: pid 54 -> shellInterface->gameSettlement,
-		// pid 66 -> ReceiveDeadSummaryEvent -> gui_deadSummary,
-		// pid 67 -> PlayEndingAnimation/ReceiveFinalSummaryEvent -> gui_finalSummary,
-		// pid 164 -> final-summary extra, all in
-		// S2CPlayerActionPacketHandles.cpp:539/:917/:928/:2166.
-		const bool isSettlementPid =
-			pid == S2CPacketType::Settlement ||
-			pid == S2CPacketType::PlayerSettlement ||
-			pid == S2CPacketType::GameSettlement ||
-			pid == S2CPacketType::GameSettlementExtra;
-		// The live leaderboard rows. Two packets paint it:
-		//  - pid 125 S2CPacketUpdateRealTimeRankInfo -> RootGuiLayout::
-		//    updateRealTimeRankData -> gui_realTimeRank (the panel the client
-		//    re-requests every 10s while it is visible). The mode's match tick
-		//    keeps pushing it after the match is over, so a fresh joiner is
-		//    handed the previous match's board.
-		//  - pid 100 S2CPacketRankData -> RankManager::setRankInfo, the rank-NPC
-		//    board. TinyTown pushes it to the joiner only, right after the
-		//    async loadMyManorRank HTTP response comes back
-		//    (TinyTown\main\listener\PlayerListener.lua onPlayerReady ->
-		//    RankListener.onLoadMyManorRank -> ManorNpcConfig:sendRankData), so
-		//    it is a pure join reaction and it is the packet that was still
-		//    reaching one of the two clients.
-		// Neither re-arms the window: both are pushed continuously by the mode,
-		//    so re-arming would hold it open for the whole match and the
-		//    genuine end screen would be lost. Both are safe to drop for the
-		//    same reason - the client re-requests pid 125 by itself while pid
-		//    100 is resent whenever the rank data changes.
-		const bool isRankPid =
-			pid == S2CPacketType::UpdateRealTimeRankInfo ||
-			pid == S2CPacketType::RankData;
-
-		std::shared_ptr<S2CPacketServerCommonData> common;
-		if (!isSettlementPid && !isRankPid)
-		{
-			if (pid != S2CPacketType::ServerCommonData)
-			{
-				return false;
-			}
-			common = std::dynamic_pointer_cast<S2CPacketServerCommonData>(packet);
-			if (!common || !isForkBlockedCommonDataKey(common->key))
-			{
-				return false;
-			}
-		}
-
-		// Only the spurious, join-triggered post-game packet is dropped. A
-		// genuine match-over happens with nobody joining, so it is forwarded
-		// and the client still gets its real end screen.
-		//
-		// Either half is enough on its own: the join pipeline covers the whole
-		// load of the other client AND the asynchronous RewardManager ->
-		// WebService call that the settlement is queued behind (with no
-		// reachable reward backend that call only returns after the HTTP
-		// timeout, which is what let the old 20s login-based window expire
-		// before the packet ever left the server); the time window covers the
-		// reaction that lands just after the joining player has spawned.
-		const ui32 now = LORD::Root::Instance()->getCurrentTime();
-		const ui32 lastJoinAge = ForkProtocol::lastJoinAgeMs(now);
-		const bool joinPipeline = ForkProtocol::joinPipelineActive();
-		const bool joinTriggeredSettlement =
-			joinPipeline || ForkProtocol::settlementSuppressedByJoinWindow(now);
-
-		if (joinTriggeredSettlement)
-		{
-			// Re-arm so a burst of settlements (one per player, each behind its
-			// own web call) is caught as a whole, not just the first one.
-			// Never on realtime-rank data: the mode's match tick pushes that
-			// continuously, so re-arming on it would hold the window open for
-			// the whole match and the genuine end screen would be lost.
-			if (!isRankPid)
-			{
-				ForkProtocol::extendJoinWindow(now);
-			}
-			if (common)
-			{
-				LordLogWarning("[FORK] join-triggered settlement common-data key '%s' (name '%s') suppressed for session " U64FMT
-					" (fork=%d, joinPipeline=%d, lastJoinAgeMs=%u)",
-					common->key.c_str(), common->name.c_str(), rakssid,
-					ForkProtocol::isForkSession(rakssid) ? 1 : 0,
-					joinPipeline ? 1 : 0, lastJoinAge);
-			}
-			else
-			{
-				LordLogWarning("[FORK] join-triggered packet pid %u suppressed for session " U64FMT
-					" (fork=%d, joinPipeline=%d, lastJoinAgeMs=%u)",
-					static_cast<unsigned>(packet->pid()), rakssid,
-					ForkProtocol::isForkSession(rakssid) ? 1 : 0,
-					joinPipeline ? 1 : 0, lastJoinAge);
-			}
-			return true;
-		}
-
-		if (common)
-		{
-			LordLogInfo("[FORK] settlement common-data key '%s' forwarded to session " U64FMT
-				" (fork=%d, joinPipeline=0, lastJoinAgeMs=%u)",
-				common->key.c_str(), rakssid,
-				ForkProtocol::isForkSession(rakssid) ? 1 : 0, lastJoinAge);
-		}
-		else
-		{
-			LordLogInfo("[FORK] settlement packet pid %u forwarded to session " U64FMT
-				" (fork=%d, joinPipeline=0, lastJoinAgeMs=%u)",
-				static_cast<unsigned>(packet->pid()), rakssid,
-				ForkProtocol::isForkSession(rakssid) ? 1 : 0, lastJoinAge);
-		}
-		return false;
-	}
-}
-
 void ServerNetwork::sendPacket(std::shared_ptr<DataPacket> packet, ui64 rakssid)
 {
-	if (isForkBlockedResultPacket(packet, rakssid))
-	{
-		return;
-	}
-	if (ForkProtocol::isForkSession(rakssid))
-	{
-		// One app packet per RakNet message for fork sessions. The 10096
-		// client aborts the rest of a message on the first packet it cannot
-		// decode, and RaknetSession batches every same-channel packet into one
-		// message - so a single undecodable packet desynced the whole batch
-		// and the leftover bytes got re-read as fake packet ids (66/67 open
-		// the post-game screen the prebuilt client crashes on).
-		m_networkCore->getRaknetInstance()->isolatePackets(rakssid, true);
-	}
 	recordPacket(packet, rakssid);
 	auto record = m_reconnectRecordMap.find(rakssid);
 	if (record != m_reconnectRecordMap.end() && record->second->isReconnectSuccess)
@@ -471,12 +200,8 @@ void ServerNetwork::multicastEntityPacket(std::shared_ptr<DataPacket> packet, co
 			LordLogWarning("raknet id %llu is not in m_playerMap", targetId);
 			continue;
 		}
-		if (iter->second->hasLogon() && !isForkBlockedResultPacket(packet, targetId))
+		if (iter->second->hasLogon())
 		{
-			if (ForkProtocol::isForkSession(targetId))
-			{
-				m_networkCore->getRaknetInstance()->isolatePackets(targetId, true);
-			}
 			m_networkCore->getRaknetInstance()->send(packet, targetId);
 		}
 	}
@@ -498,12 +223,6 @@ void ServerNetwork::onDisconnect(std::shared_ptr<ClientPeer>& clientPeer)
 	m_networkRecver->clearDeferLogin(clientPeer->getPlatformUserId());
 	auto rakssid = clientPeer->getRakssid();
 	clientPeer->logout();
-	// Forget the fork classification and the "login handshake already sent"
-	// marker, otherwise a fresh 10096 join that RakNet pins to the same
-	// SystemAddress integer would never be answered again (client stuck on
-	// "Loading player data..."). See ForkProtocol::clearSession.
-	ForkProtocol::clearSession(rakssid);
-	ForkProtocol::notePeerGone(rakssid);
 	clearPlayerCache(rakssid);
 }
 
@@ -591,14 +310,7 @@ void ServerNetwork::tickReconnect()
 					break;
 				count++;
 				auto packet = record->second->historyDataPackets.begin();
-				if (!isForkBlockedResultPacket(*packet, record->first))
-				{
-					if (ForkProtocol::isForkSession(record->first))
-					{
-						m_networkCore->getRaknetInstance()->isolatePackets(record->first, true);
-					}
-					m_networkCore->getRaknetInstance()->send(*packet, record->first);
-				}
+				m_networkCore->getRaknetInstance()->send(*packet, record->first);
 				record->second->historyDataPackets.pop_front();;
 			}
 

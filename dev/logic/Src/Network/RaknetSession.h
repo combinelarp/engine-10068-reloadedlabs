@@ -49,25 +49,8 @@ public:
 			buffer.Write((char)ID_NORMAL_DATA);
 		}
 		buffer.Write(serializedData);
-		if (m_flushEachPacket)
-		{
-			flush(channel);
-		}
 		return dataSize;
 	}
-
-	// 10096 fork sessions: put every app packet into its OWN RakNet message.
-	//
-	// The client dispatches one RakNet message at a time and aborts the rest of
-	// the message on the first packet it cannot decode (RaknetInstance.cpp:
-	// catch -> log "packet decode error" -> return). Batching therefore turns
-	// one packet whose layout the fork sizes differently into a desync
-	// cascade: the leftover bytes are re-read as fake packet ids, and when a
-	// leftover happens to look like 66/67 (PlayerSettlement/GameSettlement)
-	// the client opens the post-game screen it then crashes on. With one
-	// packet per message a failure only ever drops that single packet.
-	void setFlushEachPacket(bool enable) { m_flushEachPacket = enable; }
-	bool flushEachPacket() const { return m_flushEachPacket; }
 
 	void flush()
 	{
@@ -106,7 +89,5 @@ private:
 	RakNet::SystemAddress m_remote;
 	RakNet::RakPeerInterface* m_rakInterface = nullptr;
 	bool m_closed = false;
-	// See setFlushEachPacket - true for 10096 fork sessions.
-	bool m_flushEachPacket = false;
 	RakNet::BitStream m_bufferedSendData[MAX_CHANNEL];
 };

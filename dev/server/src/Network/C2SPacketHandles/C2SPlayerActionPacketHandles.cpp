@@ -1,8 +1,6 @@
 #include "C2SPlayerActionPacketHandles.h"
 #include "Network/protocol/C2SPackets.h"
 #include "Network/ClientPeer.h"
-#include "Network/ForkProtocol.h"
-#include "Blockman/Entity/EntityTracker.h"
 #include "Network/GameCmdMgr.h"
 #include "Network/RaknetInstance.h"
 #include "Server.h"
@@ -88,10 +86,6 @@ void C2SPlayerActionPacketHandles::handlePacket(std::shared_ptr<ClientPeer>&  cl
 	std::shared_ptr<C2SPacketPlayerMovement> & packet)
 {
 	LordAssert(clientPeer != NULL);
-
-	auto player = clientPeer->getEntityPlayer();
-	if (player == NULL)
-		return;
 
 	/* for debug, added by wanglei
 	if (packet->m_moving) {
@@ -1276,65 +1270,12 @@ void C2SPlayerActionPacketHandles::handlePacket(std::shared_ptr<ClientPeer>&  cl
 	std::shared_ptr<C2SPacketClientReady> & packet)
 {
 	LordLogInfo("C2SPacketClientReady---->UserId: " I64FMT " Ready", clientPeer->getPlatformUserId());
-
-	// Last stage of a join: the mode reacts on PlayerReadyEvent and the
-	// settlement it queues still has to come back through the reward web call,
-	// so close the join pipeline here and re-arm the grace window from this
-	// moment rather than from the (much earlier) login.
-	ForkProtocol::notePeerSpawned(clientPeer->getRakssid());
-	ForkProtocol::markPlayerJoined(LORD::Root::Instance()->getCurrentTime());
-
 	ServerNetwork::Instance()->getSender()->sendLogicSettingInfo(clientPeer->getRakssid());
 	ServerNetwork::Instance()->getSender()->sendEnableAutoShoot(clientPeer->getRakssid(), LogicSetting::Instance()->getAutoShootEnable());
 	ServerNetwork::Instance()->getSender()->sendAppItemsSettingInfo(clientPeer->getRakssid(), clientPeer->getPlatformUserId());
 	ServerNetwork::Instance()->getSender()->sendSceneSettingInfo(clientPeer->getRakssid());
 	clientPeer->setClientReady(packet->m_status);
 	clientPeer->getEntityPlayer()->setClientReady();
-
-	// 10096 fork clients only learn about OTHER players when they are explicitly
-	// synced. The login batch is sent while the client's world does not exist
-	// yet, so the spawns it carries are dropped, and the tracker's
-	// canSyncEntity() gate was still closed when the other players were first
-	// evaluated - so this client was never added to their tracking sets.
-	//
-	// Now that this client IS ready, re-run the spawn decision for every
-	// tracked entity so the new client both sees everyone and is seen by them.
-	//
-	// (This used to call EntityTracker::forceTeleport(selfPlayer->entityId),
-	// which set forceTeleportNow on the player's OWN tracker entry. That made
-	// the update loop send an entity-teleport for the player back to the
-	// player's own client using the SERVER's position - which at ClientReady
-	// time is still the login anchor, not where the client actually is. That
-	// is what flung the player into the air / buried them in the ground on
-	// spawn.)
-	{
-		auto selfPlayer = clientPeer->getEntityPlayer();
-		if (selfPlayer)
-		{
-			for (auto other : ServerNetwork::Instance()->getPlayers())
-			{
-				auto peer = other.second;
-				if (!peer || peer->getRakssid() == clientPeer->getRakssid() || !peer->hasLogon())
-				{
-					continue;
-				}
-				if (!peer->getEntityPlayer())
-				{
-					continue;
-				}
-				UserAttrInfo otherAttr;
-				if (Server::Instance()->getEnableRoom())
-				{
-					Server::Instance()->getRoomManager()->getUserAttrInfo(peer->getPlatformUserId(), otherAttr);
-				}
-				ServerNetwork::Instance()->getSender()->sendUserIn(clientPeer->getRakssid(),
-					peer->getPlatformUserId(), peer->getName(), peer->getTeamId(), peer->getTeamName(),
-					0, 0, otherAttr);
-			}
-			EntityTracker::Instance()->respawnEntitiesForReadyPlayer();
-		}
-	}
-
 	SCRIPT_EVENT::PlayerReadyEvent::invoke(clientPeer->getRakssid());
 	if (GameAnalyticsSetting::ENABLE_ANALYTICS)
 	{

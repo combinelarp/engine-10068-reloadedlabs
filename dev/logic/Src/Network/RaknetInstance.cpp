@@ -4,7 +4,6 @@
 #include "Network/protocol/DataPacketFactory.h"
 #include "Object/Time.h"
 #include <thread>
-#include <vector>
 #include "RaknetSession.h"
 
 #if LORD_PLATFORM == LORD_PLATFORM_WINDOWS
@@ -198,19 +197,6 @@ void RaknetInstance::send(std::shared_ptr<DataPacket> packet, ui64 rakssid)
 	m_commandList.enqueue({ CommandType::SEND_PACKET, rakssid, std::move(packet) });
 }
 
-void RaknetInstance::isolatePackets(ui64 rakssid, bool enable)
-{
-	std::lock_guard<std::mutex> lock(m_isolatedSessionsMutex);
-	if (enable)
-	{
-		m_isolatedSessions.insert(rakssid);
-	}
-	else
-	{
-		m_isolatedSessions.erase(rakssid);
-	}
-}
-
 
 void RaknetInstance::networkThreadMainLoop(StopFlag shouldStop)
 {
@@ -329,20 +315,6 @@ bool RaknetInstance::sendPackets(int num)
 			if (it == this->m_sessionList.end())
 				continue;
 			auto&& session = it->second;
-			{
-				// Applied here (network thread) so the session flag is only ever
-				// touched from the thread that also writes the send buffer.
-				std::lock_guard<std::mutex> lock(m_isolatedSessionsMutex);
-				if (m_isolatedSessions.count(command.sessionId) > 0 && !session->flushEachPacket())
-				{
-					// First packet after isolation was requested: drain whatever
-					// was still buffered from before the session was classified
-					// (that backlog was queued without per-packet flushing) so it
-					// cannot be glued onto the front of this packet's message.
-					session->flush();
-					session->setFlushEachPacket(true);
-				}
-			}
 			const auto& packet = *command.packet;
 			auto sentSize = session->sendPacket(packet);
 			count_send_packet_num(packet.pid(), sentSize, command.sessionId);
@@ -358,10 +330,6 @@ bool RaknetInstance::sendPackets(int num)
 			session->flush();
 			session->close();
 			this->m_sessionList.erase(it);
-			{
-				std::lock_guard<std::mutex> lock(m_isolatedSessionsMutex);
-				m_isolatedSessions.erase(command.sessionId);
-			}
 			break;
 		}
 		case CommandType::PRINT_STATISTICS:
@@ -483,9 +451,6 @@ void RaknetInstance::handleNormalData(SystemAddress& addr, Packet* rakPacket)
 	}
 	BitStream stream(rakPacket->data + 1, rakPacket->length - 1, false);
 	auto paddingSize = rakPacket->length * 8 - rakPacket->bitSize;
-	// Owned backing store used when the fork shim rewrites a packet. Declared
-	// out here so it is reused across iterations instead of reallocating.
-	std::vector<char> rewrittenBuf;
 	try
 	{
 		while (stream.GetNumberOfUnreadBits() > paddingSize)
@@ -493,75 +458,6 @@ void RaknetInstance::handleNormalData(SystemAddress& addr, Packet* rakPacket)
 			auto offsetBefore = stream.GetReadOffset();
 			ui16 packetId;
 			Serializer::read(packetId, &stream);
-			if (m_packetIdTranslator)
-			{
-				ui32 bodyLen = 0;
-				const ui8* body = nullptr;
-				if (stream.GetWriteOffset() > stream.GetReadOffset())
-				{
-					bodyLen = static_cast<ui32>((stream.GetWriteOffset() - stream.GetReadOffset()) / 8);
-					body = stream.GetData() + stream.GetReadOffset() / 8;
-				}
-				ForkPacketHookResult res = m_packetIdTranslator(rakssid, packetId, body, bodyLen);
-				if (res.consumed)
-				{
-					// message handled entirely by the protocol shim; ignore the rest
-					break;
-				}
-				if (res.packetId == RaknetInstance::kForkPacketConsumed)
-				{
-					break;
-				}
-				packetId = res.packetId;
-				if (res.newData && res.newLen > 0)
-				{
-					// Rewrite [pid][body] so the stock decoder reads a canonical layout.
-					//
-					// `stream` is a READ-ONLY view (copyData = false, see the constructor
-					// above) over the received RakNet buffer. The old code wrote the
-					// rewritten packet straight back into that view. That is only safe
-					// while the canonical body fits inside the bytes the peer actually
-					// sent - the fork's Rebirth body is variable-length and often SHORTER
-					// than the canonical [String][ui16], so RakNet had to reallocate a
-					// buffer it does not own and died on RakAssert(copyData == true)
-					// (BitStream.cpp:703). That is why the gameserver asserted every time
-					// a fork client respawned.
-					//
-					// Decode the rewritten packet from a buffer WE own instead, and
-					// consume the rest of the message (rewritten fork packets are always
-					// delivered on their own).
-					rewrittenBuf.clear();
-					rewrittenBuf.push_back(static_cast<char>(res.packetId));
-					rewrittenBuf.insert(rewrittenBuf.end(),
-						reinterpret_cast<const char*>(res.newData),
-						reinterpret_cast<const char*>(res.newData + res.newLen));
-
-					// Drain whatever is left of the original message so the outer loop
-					// stops after this packet.
-					stream.SetReadOffset(stream.GetNumberOfBitsUsed());
-
-					BitStream rewrittenStream(
-						reinterpret_cast<unsigned char*>(&rewrittenBuf[0]),
-						static_cast<unsigned int>(rewrittenBuf.size()),
-						false);
-
-					std::shared_ptr<DataPacket> rewrittenPacket(
-						DataPacketFactory::getInstance(m_isServer)->create(packetId));
-					if (!rewrittenPacket)
-					{
-						LordLogError("unknown packet id: %d (rewritten)", packetId);
-						return;
-					}
-					rewrittenPacket->decode(&rewrittenStream);
-					rewrittenPacket->setSender(SystemAddress::ToInteger(rakPacket->systemAddress));
-					if (m_handleDataCallBack)
-					{
-						m_handleDataCallBack(rewrittenPacket);
-					}
-					count_recv_packet_num(packetId, static_cast<int>(rewrittenBuf.size()), rakssid);
-					break;
-				}
-			}
 			std::shared_ptr<DataPacket> pDataPacket(
 				DataPacketFactory::getInstance(m_isServer)->create(packetId));
 

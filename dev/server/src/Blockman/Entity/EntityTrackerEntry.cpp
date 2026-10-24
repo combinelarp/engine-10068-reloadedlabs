@@ -28,7 +28,6 @@
 #include "Entity/EntityFlyingMount.h"
 #include "Entity/EntityFloatingMount.h"
 #include "Util/PlayerPrefs.h"
-#include "Network/ForkProtocol.h"
 
 #if LORD_PLATFORM == LORD_PLATFORM_WINDOWS
 #define I64FMT "%I64d"
@@ -109,22 +108,6 @@ namespace BLOCKMAN
 
 	void EntityTrackerEntry::informAllAssociatedPlayersOfItemDestruction()
 	{
-		// Player avatars may only disappear when their owner is really gone.
-		// The player entity is also destroyed + re-added by the respawn / world
-		// rebuild path while the session stays up, and pushing RemoveEntity
-		// there is what made a freshly spawned avatar vanish about a second
-		// later. ClientPeer::logout() clears m_logon BEFORE it fires the logout
-		// event that removes the entity, so a genuine leave still broadcasts
-		// RemoveEntity (peer lookup fails afterwards as well). Items, mobs and
-		// every other entity keep the stock behaviour.
-		if (auto leavingPlayer = dynamic_cast<EntityPlayerMP*>(myEntity))
-		{
-			auto peer = ServerNetwork::Instance()->findPlayerByRakssid(leavingPlayer->getRaknetID());
-			if (peer && peer->hasLogon())
-			{
-				return;
-			}
-		}
 		Server::Instance()->getNetwork()->getSender()->sendRemoveEntityToTrackingPlayers(myEntity->entityId);
 	}
 
@@ -143,32 +126,8 @@ namespace BLOCKMAN
 		if (pPlayer == myEntity || pPlayer->isLogout())
 			return;
 
-		// A tracked PLAYER's lastScaledPos is only refreshed on the tracker
-		// frequency tick, while a 10096 fork client's position is adopted in
-		// ONE step (ClientPeer::movePlayer snaps the entity to where the client
-		// actually loaded in - GameInfo position vs the Lua spawn differ by
-		// hundreds of blocks). Measuring the viewer against that stale snapshot
-		// made the adoption look like the other player ran away across the map,
-		// so the entry fell out of the 512 block gate and pushed
-		// S2CPacketRemoveEntity: the avatar showed up at join and vanished a
-		// couple of seconds later. Player entries therefore measure against the
-		// entity's CURRENT position.
-		EntityPlayerMP* trackedPlayer = dynamic_cast<EntityPlayerMP*>(myEntity);
-		const float trackedX = trackedPlayer ? myEntity->position.x : lastScaledPos.x / 32.f;
-		const float trackedZ = trackedPlayer ? myEntity->position.z : lastScaledPos.z / 32.f;
-
-		float dx = Math::Abs(pPlayer->position.x - trackedX);
-		float dz = Math::Abs(pPlayer->position.z - trackedZ);
-
-		// 10096 fork: while the two sides settle on a spawn position the pair
-		// can legitimately sit outside the 512 block gate even though both
-		// clients are looking right at each other. Removing on that basis is
-		// what made fork players flicker out of each other's screens, so a fork
-		// session is only ever untracked through the real teardown paths
-		// (logout / removePlayerFromTrackers), never by the range heuristic.
-		// Stock sessions keep the stock gate.
-		const bool forkInvolved = ForkProtocol::isForkSession(pPlayer->getRaknetID())
-			|| (trackedPlayer && ForkProtocol::isForkSession(trackedPlayer->getRaknetID()));
+		float dx = Math::Abs(pPlayer->position.x - lastScaledPos.x / 32.f);
+		float dz = Math::Abs(pPlayer->position.z - lastScaledPos.z / 32.f);
 		if (pPlayer->m_isCameraLocked)
 		{
 			float cdx = Math::Abs(pPlayer->m_cameraLockPos.x - lastScaledPos.x / 32.f);
@@ -196,29 +155,11 @@ namespace BLOCKMAN
 			invisible = myPlayer->capabilities.isWatchMode;
 		}
 		
-		const bool outOfRange = dx > m_blocksDistanceThreshold || dz > m_blocksDistanceThreshold;
-		const bool sameGroup = myEntity->getIntProperty("TrackerGroupId") == pPlayer->getIntProperty("TrackerGroupId");
-		// For a fork pair the range gate is advisory only: spawn anyway, and
-		// never untrack on range alone (the else-if below). Otherwise a client
-		// that loaded in at its own saved position would neither see nor ever
-		// re-see the other player until both happened to move again.
-		const bool inRange = !outOfRange || forkInvolved;
-
-		if (inRange && !invisible && sameGroup)
+		if (dx <= m_blocksDistanceThreshold && dz <= m_blocksDistanceThreshold && !invisible
+			&& myEntity->getIntProperty("TrackerGroupId") == pPlayer->getIntProperty("TrackerGroupId"))
 		{
 			isDelaySync = !canSyncEntity;
-			// Spawn ONLY when the avatar is not on the client yet. Never
-			// re-issue SpawnPlayer for an avatar that is already tracked: the
-			// client re-creates the entity and re-runs its spawn events /
-			// features on top of the old one (scale applied twice -> giant
-			// avatar, the owner then dies and the other client crashes).
-			// Stock paired the `rebirth` flag with a RemoveEntity sent at
-			// destroy time; we keep player avatars alive, so for players
-			// `rebirth` must NOT force a second copy. A tracked avatar is kept
-			// and its position is corrected by the normal teleport packets.
-			const bool shouldSpawn = (trackingPlayers.find(pPlayer->entityId) == trackingPlayers.end())
-				|| (rebirth && !trackedPlayer);
-			if (shouldSpawn && (isPlayerWatchingThisChunk(pPlayer) || myEntity->forceSpawn) && canSyncEntity)
+			if ((trackingPlayers.find(pPlayer->entityId) == trackingPlayers.end() || rebirth) && (isPlayerWatchingThisChunk(pPlayer) || myEntity->forceSpawn) && canSyncEntity)
 			{
 				trackingPlayers[pPlayer->entityId] = pPlayer;
 				//lastHeadMotion = int(Math::Floor(myEntity->getRotationYawHead() * 256.0F / 360.0F));
@@ -230,26 +171,11 @@ namespace BLOCKMAN
 				forceTeleportNow = false;
 			}
 		}
-		else if (!trackedPlayer)
+		else if (trackingPlayers.find(pPlayer->entityId) != trackingPlayers.end())
 		{
-			// Non-player entities (items, mobs, ...) keep the stock untrack
-			// behaviour: out of range / hidden / group change -> RemoveEntity.
-			if (trackingPlayers.find(pPlayer->entityId) != trackingPlayers.end())
-			{
-				trackingPlayers.erase(pPlayer->entityId);
-				Server::Instance()->getNetwork()->getSender()->sendRemoveEntity(myEntity->entityId, pPlayer);
-			}
+			trackingPlayers.erase(pPlayer->entityId);
+			Server::Instance()->getNetwork()->getSender()->sendRemoveEntity(myEntity->entityId, pPlayer);
 		}
-		// PLAYERS ARE NEVER UNTRACKED HERE. A player avatar must survive every
-		// range / watch-mode / group heuristic - the only two places a player
-		// avatar may disappear are the real teardown paths:
-		//   * the owner's session really ended (onLogout / disconnect), handled
-		//     by informAllAssociatedPlayersOfItemDestruction below, and
-		//   * the viewer itself logs out (removePlayerFromTrackers, no packet).
-		// Sending S2CPacketRemoveEntity here is what made 10096 avatars spawn
-		// and vanish again about a second later; the client only ever creates
-		// an avatar from S2CPacketSpawnPlayer, so a spurious remove leaves the
-		// player invisible until a full re-track happens.
 	}
 
 	void EntityTrackerEntry::spawnOrRemoveSelfEntityFor(EntityPlayers& players, bool rebirth/* = false*/)
@@ -283,19 +209,6 @@ namespace BLOCKMAN
 	void EntityTrackerEntry::spawnSelfEntityAtClientOf(EntityPlayerMP* targetPlayer)
 	{
 		auto sender = Server::Instance()->getNetwork()->getSender();
-		// Clear any avatar the viewer may still hold for this entity id before
-		// (re)spawning it. A tracker entry can be destroyed and rebuilt while
-		// the session stays up (rebirth / world rebuild), and then the entry
-		// no longer knows the client already has this avatar - sending a second
-		// SpawnPlayer stacks a second model on the first one: features/scale
-		// get applied twice (giant avatar) and the duplicated server id pairing
-		// crashes the other client ("invalid arguments"). Remove + Spawn go out
-		// back-to-back, so the client swaps the model in one step; if it holds
-		// nothing the Remove is a harmless no-op.
-		if (dynamic_cast<EntityPlayerMP*>(myEntity) != nullptr)
-		{
-			sender->sendRemoveEntity(myEntity->entityId, targetPlayer);
-		}
 		sender->sendEntitySpawn(targetPlayer->getRaknetID(), myEntity);
 
 		auto iter = m_syncEntityInfoFuncMap.find(myEntity->getClassID());
@@ -432,16 +345,6 @@ namespace BLOCKMAN
 				myEntity->isClass(ENTITY_CLASS_VEHICLE))
 			{
 				lastScaledPos = pos;
-
-				// STOCK BEHAVIOUR: a player's / vehicle's own movement is NOT
-				// relayed by the tracker. The owning client is authoritative and
-				// everyone else only ever receives a forced teleport from the
-				// tracker. Player-to-player replication goes through the stock
-				// S2CPacketEntityPlayerTeleport broadcast instead
-				// (ServerPacketSender::broadCastPlayerMovement), which both stock
-				// and 10096 clients handle - see the "S2C other-player movement"
-				// block in ForkProtocol.h and the fork broadcast added to
-				// ClientPeer::movePlayer().
 				if (!forceTeleportNow)
 					return;
 			}
@@ -482,6 +385,10 @@ namespace BLOCKMAN
 				{
 					Server::Instance()->getNetwork()->getSender()->sendEntityMovementToTrackingPlayers(trackingPlayers,
 						myEntity->entityId, yaw, pitch);
+					/*if (dynamic_cast<EntityPlayer*>(myEntity) && trackingPlayers.size() > 0) {
+					LordLogInfo("send entity[%d] rotate to tracking players, rotate (%.1f, %.1f)",
+					myEntity->entityId, myEntity->rotationYaw, myEntity->rotationPitch);
+					}*/
 				}
 			}
 			else
@@ -491,17 +398,8 @@ namespace BLOCKMAN
 
 				EntityPlayerMP* self = dynamic_cast<EntityPlayerMP*>(myEntity);
 				if (forceTeleportNow && self) {
-					// The 10096 fork client picks its own spawn point from GameInfo
-					// while the server places the entity at the Lua respawnPos, so
-					// bouncing the server's (stale) position back to the player's own
-					// client yanked it across the map on join - the "fling on spawn".
-					// A fork client is authoritative for its own position; it never
-					// needs a correction aimed at itself, only at the other viewers.
-					if (!ForkProtocol::isForkSession(self->getRaknetID()))
-					{
-						Server::Instance()->getNetwork()->getSender()->sendEntityTeleport(
-							self->getRaknetID(), myEntity->entityId, pos.x, pos.y, pos.z, yaw, pitch);
-					}
+					Server::Instance()->getNetwork()->getSender()->sendEntityTeleport(
+						self->getRaknetID(), myEntity->entityId, pos.x, pos.y, pos.z, yaw, pitch);
 
 					forceTeleportNow = false;
 				}

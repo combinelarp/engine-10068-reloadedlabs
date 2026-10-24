@@ -10,7 +10,6 @@
 #include "Game/BirdSimulator.h"
 #include "Game/BlockCity.h"
 #include "Network/protocol/S2CPackets3.h"
-#include "Network/ForkProtocol.h"
 #include "Entity/EntityDecoration.h"
 #include "Setting/SceneSetting.h"
 #include "Blockman/World/BlockChangeRecorderServer.h"
@@ -653,22 +652,7 @@ void ServerPacketSender::broadCastVehicleHornSound(const Vector3 &pos, int entit
 
 void ServerPacketSender::sendPlayerDBDataReady(ui64 rakssId)
 {
-	// DBDataReady (id 348) is an EMPTY packet, so it is trivially decodable -
-	// but it is only guaranteed to be applied if nothing undecodable precedes it
-	// in the same RakNet message. The client's decode loop aborts the REST of a
-	// message on the first packet it cannot parse (RaknetInstance.cpp:496), and
-	// RaknetSession::sendPacket concatenates every same-channel packet into one
-	// message. Sending it through the normal S2CPacketDBDataReady path put it in
-	// the same message as the expanded LoginResult, and the 10096 fork failed to
-	// parse the tail of that message - so DBDataReady was dropped, isDbDataReady()
-	// never flipped, Blockman::onGameReady() never ran and the client sat on
-	// "Loading player data..." forever.
-	//
-	// Route it through ForkRawPacket on its own channel so it is always the only
-	// packet in its message and can never be swallowed.
-	auto packet = LORD::make_shared<ForkRawPacket>();
-	packet->m_pid = static_cast<ui16>(S2CPacketType::DBDataReady);
-	packet->m_channel = ForkProtocol::kForkCriticalChannel;
+	auto packet = LORD::make_shared<S2CPacketDBDataReady>();
 	Server::Instance()->getNetwork()->sendPacket(packet, rakssId);
 }
 

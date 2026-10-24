@@ -36,15 +36,6 @@ namespace BLOCKMAN
 		//String ScriptPath = "";
 		int MaxWeight = -1;
 		bool Enable = false;
-		// A non-empty `gameType` in server mode is an explicit request for that
-		// game (serverConfig.json "gameId"). It wins outright over the Enable
-		// column, which otherwise only ranks rows against each other. Without
-		// this the server runs whichever row carries the highest Enable value,
-		// which is not necessarily the configured game - the mismatch is what
-		// let a game with a permissive block listener handle clients that
-		// expected the mode named by serverConfig.json.
-		const bool bPreferGameType = (!isClient && !gameType.empty());
-		bool PreferredTaken = false;
 		while (pReader->Read())
 		{
 			if (isClient)
@@ -55,31 +46,21 @@ namespace BLOCKMAN
 			}
 			else
 			{
-				pReader->GetString("GameType", GameType);
-				const bool bRequested = bPreferGameType && (gameType == GameType);
-				// Once the requested game has been taken no other row may
-				// displace it just by carrying a higher Enable value.
-				if (PreferredTaken)
+				pReader->GetBool("Enable", Enable);
+				if (!Enable)
 					continue;
-				if (!bRequested)
-				{
-					pReader->GetBool("Enable", Enable);
-					if (!Enable)
-						continue;
-				}
+				pReader->GetString("GameType", GameType);
 				if (checkLock)
 				{
 					String lockFile = GameType + ".lock";
 					if (PathUtil::IsFileExist(lockFile))
 						continue;
 				}
-				if (bRequested)
-					PreferredTaken = true;
 			}
 			Finded = true;
 			int Weight = 0;
 			pReader->GetInt("Enable", Weight);
-			if (PreferredTaken || Weight > MaxWeight)
+			if (Weight > MaxWeight)
 			{
 				MaxWeight = Weight;
 				m_scriptPath = "Media/Scripts/";

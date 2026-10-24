@@ -748,7 +748,7 @@ void EntityPlayerMP::onUpdate()
 	{
 		if (!SCRIPT_EVENT::FlyingByPulledCollisionEvent::invoke(entityId))
 		{
-			//ï¿½ï¿½ï¿½
+			//ÂäµØ
 		}
 
 		m_remainingFlyTicksByPulled--;
@@ -784,26 +784,6 @@ void EntityPlayerMP::onUpdate()
 			{
 				m_isElevatorArrive = false;
 				setElevator(false, 0.f, 0.f, 0, 0);
-			}
-		}
-	}
-
-	// Server-side auto-respawn countdown (armed in onDeath). Dead-but-watching
-	// players still receive onUpdate() - World::updateEntities keeps them alive
-	// while capabilities.isWatchMode is set - so this runs every tick and
-	// revives the player through the stock ClientPeer::rebirth() path once the
-	// timer expires.
-	if (m_respawnCountdown > 0)
-	{
-		--m_respawnCountdown;
-		if (m_respawnCountdown == 0)
-		{
-			auto peer = Server::Instance()->getNetwork()->findPlayerByRakssid(getRaknetID());
-			if (peer)
-			{
-				LordLogInfo("EntityPlayerMP auto-respawn after death, name %s, entityId %d",
-					getEntityName().c_str(), entityId);
-				peer->rebirth();
 			}
 		}
 	}
@@ -920,17 +900,6 @@ void EntityPlayerMP::onDeath(DamageSource* pSource)
 		Server::Instance()->getNetwork()->getSender()->sendEntityAttributeToTrackingPlayers(this);
 
 		setWatchMode(true);
-
-		// Auto-respawn for modes that do not drive a respawn countdown
-		// themselves. The stock 10068 client only ever leaves its dead /
-		// watching state on S2CPacketRebirth, and the server normally arms
-		// that through a Lua RespawnHelper countdown that fires
-		// clientPeer:rebirth(). A mode that never calls
-		// RespawnHelper.sendRespawnCountdown therefore leaves the player dead
-		// forever (the 10096 fork client is one such case). Arm a fixed
-		// server-side countdown here so every real death eventually runs the
-		// stock respawn path in ClientPeer::rebirth().
-		m_respawnCountdown = 100; // 100 ticks @ 20Hz = 5s
 	}
 }
 

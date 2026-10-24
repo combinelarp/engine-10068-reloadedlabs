@@ -358,10 +358,6 @@ protected:
 	void sendTileEntityToPlayer(TileEntity* pTileEntity);
 	int onEnchantmentModifier(Entity * target, int  enchantmentModifier) override;
 
-	public:
-	/** Used for auto-respawn in generic game modes */
-	int m_respawnCountdown = 0;
-
 private:
 	Vector3 lastMoveEventInvokePos;
 	void updateMoveEventInvoke();

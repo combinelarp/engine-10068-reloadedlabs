@@ -257,16 +257,9 @@ _SERIALIZE_MEMBER(i32, meta)
 _END_PACKET
 
 _BEGIN_PACKET_S2C(S2CPacketType::SyncPlayerRotation, DataPacket::emNormal, S2CPacketSyncPlayerRotation)
-// 10096 sends/expects rotation as real32 angles (its C2S SendPlayerRotation is
-// two floats, and client.log shows the 10096 client reading a real out of this
-// packet: "Failed to read Real: reached end of stream" on bodies like
-// [03 06 cd 7f 04 06 6c 02 19], which parse byte-exactly with the old
-// FixedLengthInteger<uint8_t> layout). The packed-byte layout desynced the
-// whole S2C stream for fork clients, which is what made avatars freeze /
-// mis-spawn and the client throw decode errors until it crashed.
 _SERIALIZE_MEMBER(i32, playerEntityId)
-_SERIALIZE_MEMBER(real32, rotationYaw)
-_SERIALIZE_MEMBER(real32, rotationPitch)
+_SERIALIZE_MEMBER(FixedLengthInteger<uint8_t>, rotationYaw)
+_SERIALIZE_MEMBER(FixedLengthInteger<uint8_t>, rotationPitch)
 _END_PACKET
 
 _BEGIN_PACKET_S2C(S2CPacketType::SyncPlayerJumpChanged, DataPacket::emNormal, S2CPacketSyncPlayerJumpChanged)

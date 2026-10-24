@@ -2,7 +2,6 @@
 #include "Server.h"
 #include "Network/ServerNetwork.h"
 #include "Network/ClientPeer.h"
-#include "Network/ForkProtocol.h"
 #include "Entity/EntityVehicle.h"
 #include "Entity/EntityRankNpc.h"
 #include "Entity/EntityMerchant.h"
@@ -312,11 +311,6 @@ void ServerPacketSender::sendPing(ui64 rakssId, ui32 clientSendPingTime)
 
 void ServerPacketSender::sendSettlement(ui64 rakssId, String gameType, String gameResult)
 {
-	// Shell-level settlement (client: shellInterface->gameSettlement) - the
-	// results/ending screen. The spurious join-triggered copies and the genuine
-	// end-of-match copy are told apart centrally in ServerNetwork::sendPacket
-	// (ForkProtocol::settlementSuppressedByJoinWindow), so this always builds
-	// and sends - the choke decides whether the session may receive it.
 	auto packet = LORD::make_shared<S2CPacketSettlement>();
 	packet->m_gameType = gameType;
 	packet->m_gameResult = gameResult;
@@ -383,10 +377,6 @@ void ServerPacketSender::sendSetWatchModeToTrackingPlayers(int entityId, bool is
 
 void ServerPacketSender::sendPlayerSettlement(ui64 rakssId, String result, bool8 isNextServer)
 {
-	// Opens the settlement / dead-summary screen (client
-	// S2CPlayerActionPacketHandles.cpp:924 -> ReceiveDeadSummaryEvent ->
-	// gui_deadSummary). The join-triggered copy is dropped for every session in
-	// ServerNetwork::sendPacket; a genuine one is forwarded.
 	auto packet = LORD::make_shared<S2CPacketPlayerSettlement>();
 	packet->m_result = result;
 	packet->m_isNextServer = isNextServer;
@@ -395,8 +385,6 @@ void ServerPacketSender::sendPlayerSettlement(ui64 rakssId, String result, bool8
 
 void ServerPacketSender::sendGameSettlement(ui64 rakssId, String result, bool8 isNextServer)
 {
-	// Match-end screen for the other player (client: PlayEndingAnimationEvent),
-	// gated the same way as sendPlayerSettlement.
 	auto packet = LORD::make_shared<S2CPacketGameSettlement>();
 	packet->m_result = result;
 	packet->m_isNextServer = isNextServer;
@@ -897,14 +885,6 @@ void ServerPacketSender::sendMemberLeftAndKill(ui64 rakssId, int left, int kill)
 
 void ServerPacketSender::sendBlockDestroyeFailure(ui64 rakssId, bool destroyeStatus, int destroyeFailureType)
 {
-	// S2C id 111 (SyncBlockDestroyeFailure) does not exist in the 10096
-	// client - it logs "unknown packet id: 111" and then misparses the rest
-	// of the stream (garbage ids 0 / 1152 / 8064, decode errors, crash).
-	// Never send it to a fork session.
-	if (ForkProtocol::isForkSession(rakssId))
-	{
-		return;
-	}
 	auto packet = LORD::make_shared<S2CPacketSyncBlockDestroyeFailure>();
 	packet->destroyeStatus = destroyeStatus;
 	packet->destroyeFailureType = destroyeFailureType;

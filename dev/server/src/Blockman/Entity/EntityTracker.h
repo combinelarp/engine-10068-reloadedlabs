@@ -49,19 +49,6 @@ public:
 	
 	bool forceTeleport(int entityId);
 
-	// Re-run the spawn decision for every tracked entity against every player.
-	//
-	// EntityTrackerEntry::spawnOrRemoveSelfEntityAtClientOf only adds a player
-	// to another entry's trackingPlayers when the OBSERVED player passes
-	// canSyncEntity() - i.e. has already sent C2SPacketClientReady. A player who
-	// logs in while others are already present therefore never gets added to
-	// those entries' tracking sets, and because nothing re-checks the condition
-	// afterwards they stay invisible to everyone for the rest of the session
-	// (the "other player disappears" bug). Calling this the moment a client
-	// becomes ready makes every entry re-evaluate, so the new client both sees
-	// everyone and is seen by them.
-	void respawnEntitiesForReadyPlayer();
-
 private:
     void addEntityToTracker_inner(Entity* toAddEntity, int viewDis, int frequency, bool sendVelocity = false);
 };

@@ -17,7 +17,6 @@ date:		2017/06/20
 #include <string>
 #include <queue>
 #include <mutex> 
-#include <set>
 #include <chrono>
 
 #include "raknet/include/RakPeerInterface.h"
@@ -73,7 +72,7 @@ public:
 		LORD::String clientIp;
 	};
 
-	// ï¿½ï¿½ï¿½ï¿½Packet Îªï¿½ï¿½ConnEvent ï¿½Ü¸ï¿½ packetï¿½ï¿½ï¿½ï¿½Í¬Ò»ï¿½Ð±ï¿½ï¿½Ð¡ï¿½
+	// ÌØÊâPacket ÎªÁËConnEvent ÄÜ¸ú packet´¦ÓÚÍ¬Ò»ÁÐ±íÖÐ¡£
 	class ConnEventPacket :public DataPacket
 	{
 	public:
@@ -96,44 +95,11 @@ public:
 	void listen(i32 maxPlayers);
 	void setHeartbeatCallback(std::function<void()> heartBeatHandler);
 
-	// Optional hook to inspect / remap an incoming packet id before factory
-	// dispatch. The server uses it to translate the 2023 fork client's
-	// renumbered C2S ids, to recognise the fork client on the wire (id 179)
-	// and to consume or rewrite the fork's non-stock packets. It is called once
-	// per unread message; body/bodyLen give the raw bytes that follow the
-	// packet id (valid only for the duration of the call).
-	//
-	// Return semantics:
-	//   {packetId, false, nullptr, 0}   remap the id, keep the original body
-	//   {_,         true,  _,       _}  message already handled: drain the rest
-	//   {packetId, false, data,   len}  remap AND replace the body with a
-	//                                   canonical byte stream before decoding
-	//   {kForkPacketConsumed, _, _, _}  legacy unconditional drain
-	static constexpr ui16 kForkPacketConsumed = 0xFFFF;
-	struct ForkPacketHookResult
-	{
-		ui16 packetId = 0;                 // stock id the packet factory should use
-		bool consumed = false;             // true: message fully handled, drop it
-		const ui8* newData = nullptr;      // rewritten body (nullptr == keep original)
-		ui32 newLen = 0;
-	};
-	using PacketIdTranslator = std::function<ForkPacketHookResult(ui64 rakssid, ui16 packetId, const ui8* body, ui32 bodyLen)>;
-	void setPacketIdTranslator(PacketIdTranslator translator) { m_packetIdTranslator = translator; }
-
 	void closeSession(ui64 rakSock);
 	void connEventHandler(ConnectEvent evn);
 
 	void send(std::shared_ptr<DataPacket> packet, ui64 rakssid);
 	void flush() { m_forceFlush = true; }
-
-	// Put every subsequent packet of this session into its own RakNet message
-	// (see RaknetSession::setFlushEachPacket). Used for 10096 fork sessions so
-	// that one packet the fork client cannot decode only drops itself instead
-	// of desyncing the whole batch - the desync is what produced fake packet
-	// ids, including 66/67 (PlayerSettlement/GameSettlement) that open the
-	// post-game screen the prebuilt client crashes on. Safe to call from any
-	// thread; the flag is applied on the network thread.
-	void isolatePackets(ui64 rakssid, bool enable);
 
 	void recv(std::function<void(std::shared_ptr<DataPacket>)> handler);
 
@@ -176,17 +142,10 @@ private:
 
 	std::function<void(std::shared_ptr<DataPacket>)> m_handleDataCallBack = nullptr;
 	std::function<void()> m_sendHeartbeatCallback = nullptr;
-	PacketIdTranslator m_packetIdTranslator = nullptr;
 
 	bool m_isServer = false;
 
 	std::map<ui64, std::unique_ptr<RaknetSession>> m_sessionList;
-
-	// Sessions whose packets must not share a RakNet message (10096 fork).
-	// Written by isolatePackets() from the game thread, read on the network
-	// thread - guarded by its own mutex, not by m_sessionList.
-	std::mutex m_isolatedSessionsMutex;
-	std::set<ui64> m_isolatedSessions;
 
 	std::shared_ptr<UThread> m_networkThread;
 
