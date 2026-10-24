@@ -290,7 +290,7 @@ template<>
 		t.clear();
 		return;
 	}
-	auto buf = std::make_unique<char[]>(stringLen);
+auto buf = std::unique_ptr<char[]>(new char[stringLen]);
 	if (!stream->Read(buf.get(), stringLen))
 	{
 		throw std::logic_error("Failed to read string: reached end of stream");
@@ -298,7 +298,7 @@ template<>
 	t = std::string(buf.get(), stringLen);
 }
 
- template<>
+template<>
  inline void Serializer::write(const String & t, RakNet::BitStream* stream)
  {
 	 ui32 len = t.size();
@@ -316,7 +316,7 @@ template<>
 		 t.clear();
 		 return;
 	 }
-	 auto buf = std::make_unique<char[]>(stringLen);
+	 auto buf = std::unique_ptr<char[]>(new char[stringLen]);
 	 if (!stream->Read(buf.get(), stringLen))
 	 {
 		 throw std::logic_error("Failed to read String: reached end of stream");
