@@ -8,3 +8,10 @@
 **/ApkBuild/obj/
 **/Bin
 **/.vs/
+**/obj/
+*.o
+*.dll
+*.lib
+*.exe
+*.pdb
+*.vcxproj.user

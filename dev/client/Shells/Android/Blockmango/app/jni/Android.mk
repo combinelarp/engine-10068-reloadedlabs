@@ -167,11 +167,11 @@ LOCAL_LDLIBS := -landroid -lc -lm -ldl -llog -lz -lEGL -lGLESv1_CM -lGLESv2 -lat
 
 LOCAL_SRC_FILES := EchoHelper.cpp Blockman.cpp JniHelper.cpp EditBoxImplAndroid.cpp SimpleAudioEngineJni.cpp AndroidSoundEngine.cpp ShellInterfaceAndroid.cpp mtp/crc32.c mtp/Mtp.cpp mtp/tss_data_decrypt2.cpp
 
-LOCAL_STATIC_LIBRARIES := libGameClient
-LOCAL_SHARED_LIBRARIES := libfmod
-LOCAL_SHARED_LIBRARIES += libtersafe2
+LOCAL_STATIC_LIBRARIES := libGameClient libLordCore libLordGLES2Render Lua curl libLogic Raknet Cpr Zippp Zip G3log
+	LOCAL_SHARED_LIBRARIES := libfmod
+	LOCAL_SHARED_LIBRARIES += libtersafe2
 
-LOCAL_LDFLAGS := -Wl,--hash-style=both
+	LOCAL_LDFLAGS := -Wl,--hash-style=both -Wl,--allow-multiple-definition
 LOCAL_SHORT_COMMANDS := true
 
 include $(BUILD_SHARED_LIBRARY)
