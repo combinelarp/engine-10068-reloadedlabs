@@ -3,7 +3,7 @@ APP_MODULES := Logic
 APP_ABI := armeabi-v7a
 #armeabi-v7a x86
 APP_PLATFORM := android-15
-APP_STL := c++_shared
+APP_STL := gnustl_static
 
 #APP_CPPFLAGS := -std=c++14 -pthread -fexceptions -frtti -D__cplusplus=201403
 APP_CPPFLAGS := -std=c++14 -pthread -fexceptions -frtti -ftemplate-depth=8000 -DBOOST_PP_VARIADICS=1
